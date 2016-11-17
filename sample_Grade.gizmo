@@ -1,0 +1,58 @@
+#! C:/Program Files/Nuke8.0v5/nuke-8.0.v5.dll -nx
+version 8.0 v5
+Gizmo {
+ tile_color 0x8bff6cff
+ gl_color 0x8bff6cff
+ addUserKnob {20 calculate l Calculate -STARTLINE}
+ addUserKnob {26 info l Info: T "click the calculate button first and then you can sample blackpoint and white point!"}
+ addUserKnob {3 filter l Filter}
+ filter 5
+ addUserKnob {22 calculate_1 l Calculate -STARTLINE T "import nuke\nimport threading\nimport time\nimport numpy\nfrom numpy import *\nimport math\n\n####################################################################################\n####该函数用于获得序列的宽高####\n\ndef getWH(node):\n    W = nuke.toNode(node).metadata('input/width')\n    H = nuke.toNode(node).metadata('input/height')\n    return \[W,H]\n\n####################################################################################\n#该循环用于计算xrange的取值范围#\n\ndef xrange(node,filter):    \n    xrange = \[]\n    for n in range(getWH(node)\[0]):\n        if (2*filter + 1) * n < getWH(node)\[0]:\n            xrange.append((2*filter + 1) * n + filter)\n        else:\n            break\n    return xrange\n\n################################\n#该循环用于计算yrange的取值范围#\n\ndef yrange(node,filter):    \n    yrange = \[]\n    for n in range(getWH(node)\[1]):  \n        if (2*filter + 1) * n < getWH(node)\[1]:\n            yrange.append((2*filter + 1) * n + filter)\n        else:\n            break\n    return yrange\n\n################################\n\n#################BUTTON1BUTTON1BUTTON1BUTTON1BUTTON1BUTTON1######################\n#该函数用来采样单通道的数据，并存到数组中#\n#filter定义每次采样的跨度，跨度越大，速度越快，但精度越低#\n\n#声明全局变量，方便后面函数直接调用，省去重新计算的步骤\n\ndef matrixrgb(node,channel,filter):\n\n    rank_xrange = \[]\n    xrangelist = xrange(node,filter)\n    yrangelist = yrange(node,filter)\n\n\n    #该循环用于创建一个array数组\n    matrix = \[]\n    for y in yrangelist:\n        for x in xrangelist:\n            value = nuke.toNode(node).sample(channel,x,y,filter,filter)\n            matrix.append(value)\n        time.sleep(0.0005)\n\n    matrixarr = array(matrix,dtype = float64)\n\n    matrixarr = matrixarr.reshape(len(xrangelist),len(yrangelist))\n\n    return matrixarr\n\n\n####################################################################################\n\n##############BUTTON2BUTTON2BUTTON2BUTTON2BUTTON2BUTTON2##############\n######采样当前alpha通道的值#####\n\ndef samplealpha(node,filter):\n\n    matrixalpha = matrixrgb(node,'alpha',filter)\n\n    return matrixalpha\n\n\n####################################################################################\n\n\n##############BUTTON3BUTTON3BUTTON3BUTTON3BUTTON3BUTTON3###############\n####分析当前数组中的数学期望####该算法考虑了alpha通道的影响############\n\ndef findexpectation(matrixarray,matrixalpha):\n\n    matrixalpha = (matrixalpha >= 0.9999)\n\n    matrixarray_exp = matrixarray * matrixalpha\n\n    countalpha = matrixalpha.sum()\n\n    expectation = matrixarray_exp.sum() / countalpha\n\n    return expectation\n\n\n####################################################################################\n\n\n##############BUTTON3BUTTON3BUTTON3BUTTON3BUTTON3BUTTON3############################\n####分析当前数组中的数学方差########该算法考虑了alpha通道的影响#####################\n\ndef findvariance(matrixarray,matrixalpha):\n    \n    matrixalpha = (matrixalpha >= 0.9999)\n\n    matrixarray_var = matrixarray * matrixalpha\n\n    expectation = findexpectation(matrixarray,matrixalpha)\n\n    countalpha = matrixalpha.sum()\n\n    varmatrix = ( ( matrixarray_var - expectation ) ** 2 ) * ( matrixalpha / countalpha )\n\n    variance = varmatrix.sum()\n\n    return sqrt(variance)\n\n####################################################################################\n\n##############BUTTON4BUTTON4BUTTON4BUTTON4BUTTON4BUTTON4############################\n####分析当前数组中的最大值####\n\ndef findmax(matrixarray,matrixalpha):\n\n    matrixalpha = (matrixalpha >= 0.9999)\n\n    newmatrix_1 = matrixarray * matrixalpha\n\n    max = newmatrix_1.max()\n\n    return max\n\n####################################################################################\n\n##############BUTTON5BUTTON5BUTTON5BUTTON5BUTTON5BUTTON5############################\n####分析当前数组中的最小值####\n\ndef findmin(matrixarray,matrixalpha):\n\n    matrixalpha = (matrixalpha >= 0.9999)\n\n    newmatrix_1 = matrixarray * matrixalpha\n\n    newmatrix_2 = sort(newmatrix_1)\n    \n    #print newmatrix_2\n\n    minlist = \[]\n\n    for j in range(newmatrix_2.shape\[0]):\n        for i in range(newmatrix_2.shape\[1]):\n            if newmatrix_2\[j,i] > 0:\n                minlist.append(newmatrix_2\[j,i])\n                break\n        time.sleep(0.001)\n\n    minlist.sort()\n    newmatrix_3 = minlist\[0]\n\n    return newmatrix_3\n\n####################################################################################  \n\n\n#################################################################################### \n##############BUTTON8BUTTON8BUTTON8BUTTON8BUTTON8BUTTON8############################\n\n#该函数用来对每一通道新建一个进程进行执行#\n\ndef calculate():\n\n    source_maxl = \[]\n    source_maxl_1 = \[]\n    source_minl = \[]\n    source_minl_1 = \[]\n\n\n    matrixalphaarray_A_1 = (matrixalphaarray_A >= 0.9999)\n    matrixarray_A_r_1 = matrixarray_A_r * matrixalphaarray_A_1\n    matrixarray_A_g_1 = matrixarray_A_g * matrixalphaarray_A_1\n    matrixarray_A_b_1 = matrixarray_A_b * matrixalphaarray_A_1\n\n\n    Lumin_A = 0.3*matrixarray_A_r_1 + 0.6*matrixarray_A_g_1 + 0.1*matrixarray_A_b_1\n\n#########################################################################################\n#########################################################################################\n\n    Lumin_A_1 = sort(Lumin_A)\n    minlist_A = \[]\n    for i in range(Lumin_A_1.shape\[0]):\n        for j in range(Lumin_A_1.shape\[1]):\n            if Lumin_A_1\[i,j] > 0:\n                minlist_A.append(Lumin_A_1\[i,j])\n                break\n        time.sleep(0.001)\n    minlist_A.sort()\n    Lumin_A_min = minlist_A\[0]\n    ##########################################\n\n    source_maxl_1 = \[matrixarray_A_r_1\[where(Lumin_A == Lumin_A.max())]\[0],matrixarray_A_g_1\[where(Lumin_A == Lumin_A.max())]\[0],matrixarray_A_b_1\[where(Lumin_A == Lumin_A.max())]\[0]]\n   \n    \n    source_minl_1 = \[matrixarray_A_r_1\[where(Lumin_A == Lumin_A_min)]\[0],matrixarray_A_g_1\[where(Lumin_A == Lumin_A_min)]\[0],matrixarray_A_b_1\[where(Lumin_A == Lumin_A_min)]\[0]]\n    \n\n    ###########################\n    ########计算source#########\n\n\n    nuke.thisNode().knob('target_max').setValue(source_maxl_1)\n    nuke.thisNode().knob('target_min').setValue(source_minl_1)\n\n\n\n    ###########################\n\n\n#################################################################################### \n######执行程序初始化#######\n####同时判断alpha通道是否存在####\n\nglobal matrixalphaarray_A\n\n\nglobal matrixarray_A_r,matrixarray_A_g,matrixarray_A_b\n\nfilter = nuke.thisNode().knob('filter').value()\n\nexpressionlist = \[\"matrixarray_A_r = matrixrgb('matchRGB_A','red',filter)\",\"matrixarray_A_g = matrixrgb('matchRGB_A','green',filter)\",\n\"matrixarray_A_b = matrixrgb('matchRGB_A','blue',filter)\",\"matrixalphaarray_A = samplealpha('matchRGB_A',filter)\",\"calculate()\"]\n\n#判断source target有无alpha通道，如无，弹床报错并跳过之后进程\nfor i in nuke.toNode('matchRGB_A').channels():\n    if i != 'rgba.alpha':\n        A_have_alpha = 0\n    else:\n        A_have_alpha = 1\n        break    \n\nif len(nuke.toNode('matchRGB_A').metadata()) == 0:\n    nuke.message('Source stream need metadata')\nelse:\n    if A_have_alpha == 1:\n        task = nuke.ProgressTask(\"Calculate\")\n        task.setProgress(0)\n        for i in range(5):\n            if task.isCancelled():\n                del task\n                break\n            if expressionlist\[i].find('_') != -1:\n                if expressionlist\[i].find('red') != -1:\n                    message_1 = 'calculate source red......'\n                elif expressionlist\[i].find('green') != -1:\n                    message_1 = 'calculate source green......'\n                elif expressionlist\[i].find('blue') != -1:\n                    message_1 = 'calculate source blue......'\n                elif expressionlist\[i].find('alpha') != -1:\n                    message_1 = 'calculate source alpha......'       \n\n            else:    \n                message_1 = 'calculate'\n            task.setMessage(message_1)\n            exec(expressionlist\[i])\n            task.setProgress((i+1)*20)\n            time.sleep( 0.05 )\n        try:\n            del task\n        except:\n            print \"that's all right\"\n    else:\n        nuke.message('Source sequence need alpha channel!')"}
+ addUserKnob {26 ""}
+ addUserKnob {18 blackpoint l BlackPoint R -1 1}
+ blackpoint {0 0 0}
+ addUserKnob {6 blackpoint_panelDropped l "panel dropped state" -STARTLINE +HIDDEN}
+ addUserKnob {18 whitepoint l WhitePoint R 0 100}
+ whitepoint {1 1 1}
+ addUserKnob {6 whitepoint_panelDropped l "panel dropped state" -STARTLINE +HIDDEN}
+ addUserKnob {18 target_min l INVISIBLE +INVISIBLE R -10 10}
+ target_min {0 0 0}
+ addUserKnob {6 target_min_panelDropped l "panel dropped state" -STARTLINE +HIDDEN}
+ addUserKnob {18 target_max l INVISIBLE +INVISIBLE R -10 10}
+ target_max {1 1 1}
+ addUserKnob {6 target_max_panelDropped l "panel dropped state" -STARTLINE +HIDDEN}
+ addUserKnob {26 writebysol l INVISIBLE +INVISIBLE T "Version1.0\nWrite by Sol"}
+}
+ Input {
+  inputs 0
+  name sample
+  xpos -264
+  ypos 241
+ }
+ NoOp {
+  name matchRGB_A
+  xpos -264
+  ypos 265
+ }
+ Grade {
+  blackpoint {{parent.target_min} {parent.target_min} {parent.target_min} {parent.target_min}}
+  whitepoint {{parent.target_max} {parent.target_max} {parent.target_max} {parent.target_max}}
+  black_clamp false
+  name Grade6
+  xpos -264
+  ypos 305
+ }
+ Grade {
+  black {{parent.blackpoint} {parent.blackpoint} {parent.blackpoint} {parent.blackpoint}}
+  white {{parent.whitepoint} {parent.whitepoint} {parent.whitepoint} {parent.whitepoint}}
+  black_clamp false
+  name Grade7
+  xpos -264
+  ypos 347
+ }
+ Output {
+  name Output1
+  xpos -264
+  ypos 447
+ }
+end_group

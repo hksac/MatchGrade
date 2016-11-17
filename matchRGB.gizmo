@@ -1,0 +1,614 @@
+#! C:/Program Files/Nuke8.0v5/nuke-8.0.v5.dll -nx
+version 8.0 v5
+Gizmo {
+ inputs 2
+ tile_color 0xfff35ff
+ addUserKnob {20 calculate_check l CalculateAndCheck}
+ addUserKnob {26 info1 l Info: T "Sampling two picture and match target color to source color.\nMake sure your sequence have a alpha channel to control sampling area."}
+ addUserKnob {6 linear_mode l Linear_Mode t "sampling in linear colorspace" +STARTLINE}
+ addUserKnob {3 filter l Filter t "All you need to do is set this value,2 may be\ngood.large value can speed up the process,but the result may be unaccuracy."}
+ filter 1
+ addUserKnob {22 calculate l Calculate -STARTLINE T "import nuke\nimport threading\nimport time\nimport numpy\nfrom numpy import *\nimport math\n\n####################################################################################\n####该函数用于获得序列的宽高####\n\ndef getWH(node):\n    W = nuke.toNode(node).metadata('input/width')\n    H = nuke.toNode(node).metadata('input/height')\n    return \[W,H]\n\n####################################################################################\n#该循环用于计算xrange的取值范围#\n\ndef xrange(node,filter):    \n    xrange = \[]\n    for n in range(getWH(node)\[0]):\n        if (2*filter + 1) * n < getWH(node)\[0]:\n            xrange.append((2*filter + 1) * n + filter)\n        else:\n            break\n    return xrange\n\n################################\n#该循环用于计算yrange的取值范围#\n\ndef yrange(node,filter):    \n    yrange = \[]\n    for n in range(getWH(node)\[1]):  \n        if (2*filter + 1) * n < getWH(node)\[1]:\n            yrange.append((2*filter + 1) * n + filter)\n        else:\n            break\n    return yrange\n\n################################\n\n#################BUTTON1BUTTON1BUTTON1BUTTON1BUTTON1BUTTON1######################\n#该函数用来采样单通道的数据，并存到数组中#\n#filter定义每次采样的跨度，跨度越大，速度越快，但精度越低#\n\n#声明全局变量，方便后面函数直接调用，省去重新计算的步骤\n\ndef matrixrgb(node,channel,filter):\n\n    rank_xrange = \[]\n    xrangelist = xrange(node,filter)\n    yrangelist = yrange(node,filter)\n\n\n    #该循环用于创建一个array数组\n    matrix = \[]\n    for y in yrangelist:\n        for x in xrangelist:\n            value = nuke.toNode(node).sample(channel,x,y,filter,filter)\n            matrix.append(value)\n        time.sleep(0.0005)\n\n    matrixarr = array(matrix,dtype = float64)\n\n    matrixarr = matrixarr.reshape(len(xrangelist),len(yrangelist))\n\n    return matrixarr\n\n\n####################################################################################\n\n##############BUTTON2BUTTON2BUTTON2BUTTON2BUTTON2BUTTON2##############\n######采样当前alpha通道的值#####\n\ndef samplealpha(node,filter):\n\n    matrixalpha = matrixrgb(node,'alpha',filter)\n\n    return matrixalpha\n\n\n####################################################################################\n\n\n##############BUTTON3BUTTON3BUTTON3BUTTON3BUTTON3BUTTON3###############\n####分析当前数组中的数学期望####该算法考虑了alpha通道的影响############\n\ndef findexpectation(matrixarray,matrixalpha):\n\n    matrixalpha = (matrixalpha >= 0.9999)\n\n    matrixarray_exp = matrixarray * matrixalpha\n\n    countalpha = matrixalpha.sum()\n\n    expectation = matrixarray_exp.sum() / countalpha\n\n    return expectation\n\n\n####################################################################################\n\n\n##############BUTTON3BUTTON3BUTTON3BUTTON3BUTTON3BUTTON3############################\n####分析当前数组中的数学方差########该算法考虑了alpha通道的影响#####################\n\ndef findvariance(matrixarray,matrixalpha):\n    \n    matrixalpha = (matrixalpha >= 0.9999)\n\n    matrixarray_var = matrixarray * matrixalpha\n\n    expectation = findexpectation(matrixarray,matrixalpha)\n\n    countalpha = matrixalpha.sum()\n\n    varmatrix = ( ( matrixarray_var - expectation ) ** 2 ) * ( matrixalpha / countalpha )\n\n    variance = varmatrix.sum()\n\n    return sqrt(variance)\n\n####################################################################################\n\n##############BUTTON4BUTTON4BUTTON4BUTTON4BUTTON4BUTTON4############################\n####分析当前数组中的最大值####\n\ndef findmax(matrixarray,matrixalpha):\n\n    matrixalpha = (matrixalpha >= 0.9999)\n\n    newmatrix_1 = matrixarray * matrixalpha\n\n    max = newmatrix_1.max()\n\n    return max\n\n####################################################################################\n\n##############BUTTON5BUTTON5BUTTON5BUTTON5BUTTON5BUTTON5############################\n####分析当前数组中的最小值####\n\ndef findmin(matrixarray,matrixalpha):\n\n    matrixalpha = (matrixalpha >= 0.9999)\n\n    newmatrix_1 = matrixarray * matrixalpha\n\n    newmatrix_2 = sort(newmatrix_1)\n    \n    #print newmatrix_2\n\n    minlist = \[]\n\n    for j in range(newmatrix_2.shape\[0]):\n        for i in range(newmatrix_2.shape\[1]):\n            if newmatrix_2\[j,i] > 0:\n                minlist.append(newmatrix_2\[j,i])\n                break\n        time.sleep(0.001)\n\n    minlist.sort()\n    newmatrix_3 = minlist\[0]\n\n    return newmatrix_3\n\n####################################################################################  \n\n\n#################################################################################### \n##############BUTTON8BUTTON8BUTTON8BUTTON8BUTTON8BUTTON8############################\n\n#该函数用来对每一通道新建一个进程进行执行#\n\ndef calculate():\n\n    source_maxl = \[]\n    source_maxl_1 = \[]\n    source_minl = \[]\n    source_minl_1 = \[]\n    source_expectationl = \[]\n    source_variancel = \[]\n\n    target_maxl = \[]\n    target_maxl_1 = \[]\n    target_minl = \[]\n    target_minl_1 = \[]\n    target_expectationl = \[]\n    target_variancel = \[]\n\n    matrixalphaarray_A_1 = (matrixalphaarray_A >= 0.9999)\n    matrixarray_A_r_1 = matrixarray_A_r * matrixalphaarray_A_1\n    matrixarray_A_g_1 = matrixarray_A_g * matrixalphaarray_A_1\n    matrixarray_A_b_1 = matrixarray_A_b * matrixalphaarray_A_1\n\n    matrixalphaarray_B_1 = (matrixalphaarray_B >= 0.9999)\n    matrixarray_B_r_1 = matrixarray_B_r * matrixalphaarray_B_1\n    matrixarray_B_g_1 = matrixarray_B_g * matrixalphaarray_B_1\n    matrixarray_B_b_1 = matrixarray_B_b * matrixalphaarray_B_1\n\n    Lumin_A = 0.3*matrixarray_A_r_1 + 0.6*matrixarray_A_g_1 + 0.1*matrixarray_A_b_1\n    Lumin_B = 0.3*matrixarray_B_r_1 + 0.6*matrixarray_B_g_1 + 0.1*matrixarray_B_b_1\n\n#########################################################################################\n#########################################################################################\n\n    Lumin_A_1 = sort(Lumin_A)\n    minlist_A = \[]\n    for i in range(Lumin_A_1.shape\[0]):\n        for j in range(Lumin_A_1.shape\[1]):\n            if Lumin_A_1\[i,j] > 0:\n                minlist_A.append(Lumin_A_1\[i,j])\n                break\n        time.sleep(0.001)\n    if minlist_A == \[]:\n        nuke.message(\"The minimum of reference is lower than zero\")\n        return\n    else:\n        minlist_A.sort()\n        Lumin_A_min = minlist_A\[0]\n    ##########################################\n    Lumin_B_1 = sort(Lumin_B)\n    minlist_B = \[]\n    for i in range(Lumin_B_1.shape\[0]):\n        for j in range(Lumin_B_1.shape\[1]):\n            if Lumin_B_1\[i,j] > 0:\n                minlist_B.append(Lumin_B_1\[i,j])\n                break\n        time.sleep(0.001)\n    if minlist_B == \[]:\n        nuke.message(\"The minimum of target is lower than zero\")\n        return\n    else:\n        minlist_B.sort()\n        Lumin_B_min = minlist_B\[0]\n    ##########################################\n\n    source_maxl_1 = \[matrixarray_A_r_1\[where(Lumin_A == Lumin_A.max())]\[0],matrixarray_A_g_1\[where(Lumin_A == Lumin_A.max())]\[0],matrixarray_A_b_1\[where(Lumin_A == Lumin_A.max())]\[0]]\n    target_maxl_1 = \[matrixarray_B_r_1\[where(Lumin_B == Lumin_B.max())]\[0],matrixarray_B_g_1\[where(Lumin_B == Lumin_B.max())]\[0],matrixarray_B_b_1\[where(Lumin_B == Lumin_B.max())]\[0]]\n    \n    source_minl_1 = \[matrixarray_A_r_1\[where(Lumin_A == Lumin_A_min)]\[0],matrixarray_A_g_1\[where(Lumin_A == Lumin_A_min)]\[0],matrixarray_A_b_1\[where(Lumin_A == Lumin_A_min)]\[0]]\n    target_minl_1 = \[matrixarray_B_r_1\[where(Lumin_B == Lumin_B_min)]\[0],matrixarray_B_g_1\[where(Lumin_B == Lumin_B_min)]\[0],matrixarray_B_b_1\[where(Lumin_B == Lumin_B_min)]\[0]]\n    \n\n    ###########################\n    ########计算source#########\n\n    findmaxv_r = findmax(matrixarray_A_r,matrixalphaarray_A)\n    findminv_r = findmin(matrixarray_A_r,matrixalphaarray_A)\n    findexpectationv_r = findexpectation(matrixarray_A_r,matrixalphaarray_A)\n    findvariancev_r = findvariance(matrixarray_A_r,matrixalphaarray_A)\n\n    findmaxv_g = findmax(matrixarray_A_g,matrixalphaarray_A)\n    findminv_g = findmin(matrixarray_A_g,matrixalphaarray_A)\n    findexpectationv_g = findexpectation(matrixarray_A_g,matrixalphaarray_A)\n    findvariancev_g = findvariance(matrixarray_A_g,matrixalphaarray_A)\n\n    findmaxv_b = findmax(matrixarray_A_b,matrixalphaarray_A)\n    findminv_b = findmin(matrixarray_A_b,matrixalphaarray_A)\n    findexpectationv_b = findexpectation(matrixarray_A_b,matrixalphaarray_A)\n    findvariancev_b = findvariance(matrixarray_A_b,matrixalphaarray_A)\n\n    source_maxl = \[findmaxv_r,findmaxv_g,findmaxv_b]\n    source_minl = \[findminv_r,findminv_g,findminv_b]\n    source_expectationl = \[findexpectationv_r,findexpectationv_g,findexpectationv_b]\n    source_variancel = \[findvariancev_r,findvariancev_g,findvariancev_b]\n\n    nuke.thisNode().knob('source_max').setValue(source_maxl)\n    nuke.thisNode().knob('source_min').setValue(source_minl)\n    nuke.thisNode().knob('source_expectation').setValue(source_expectationl)\n    nuke.thisNode().knob('source_variance').setValue(source_variancel)\n    nuke.thisNode().knob('source_max_1').setValue(source_maxl_1)\n    nuke.thisNode().knob('source_min_1').setValue(source_minl_1)\n    nuke.thisNode().knob('luminsource').setValue(mean(Lumin_A))\n\n\n    ###########################\n    ########计算target#########\n\n    findmaxv_r = findmax(matrixarray_B_r,matrixalphaarray_B)\n    findminv_r = findmin(matrixarray_B_r,matrixalphaarray_B)\n    findexpectationv_r = findexpectation(matrixarray_B_r,matrixalphaarray_B)\n    findvariancev_r = findvariance(matrixarray_B_r,matrixalphaarray_B)\n\n    findmaxv_g = findmax(matrixarray_B_g,matrixalphaarray_B)\n    findminv_g = findmin(matrixarray_B_g,matrixalphaarray_B)\n    findexpectationv_g = findexpectation(matrixarray_B_g,matrixalphaarray_B)\n    findvariancev_g = findvariance(matrixarray_B_g,matrixalphaarray_B)\n\n    findmaxv_b = findmax(matrixarray_B_b,matrixalphaarray_B)\n    findminv_b = findmin(matrixarray_B_b,matrixalphaarray_B)\n    findexpectationv_b = findexpectation(matrixarray_B_b,matrixalphaarray_B)\n    findvariancev_b = findvariance(matrixarray_B_b,matrixalphaarray_B)\n\n    target_maxl = \[findmaxv_r,findmaxv_g,findmaxv_b]\n    target_minl = \[findminv_r,findminv_g,findminv_b]\n    target_expectationl = \[findexpectationv_r,findexpectationv_g,findexpectationv_b]\n    target_variancel = \[findvariancev_r,findvariancev_g,findvariancev_b]\n\n\n    nuke.thisNode().knob('target_max').setValue(target_maxl)\n    nuke.thisNode().knob('target_min').setValue(target_minl)\n    nuke.thisNode().knob('target_expectation').setValue(target_expectationl)\n    nuke.thisNode().knob('target_variance').setValue(target_variancel)\n    nuke.thisNode().knob('target_max_1').setValue(target_maxl_1)\n    nuke.thisNode().knob('target_min_1').setValue(target_minl_1)\n    nuke.thisNode().knob('lumintarget').setValue(mean(Lumin_B))\n\n\n\n\n#################################################################################### \n######执行程序初始化#######\n####同时判断alpha通道是否存在####\n\nglobal matrixalphaarray_A\nglobal matrixalphaarray_B\n\nglobal matrixarray_A_r,matrixarray_A_g,matrixarray_A_b\nglobal matrixarray_B_r,matrixarray_B_g,matrixarray_B_b\n\nfilter = nuke.thisNode().knob('filter').value()\n\nexpressionlist = \[\"matrixarray_A_r = matrixrgb('matchRGB_A','red',filter)\",\"matrixarray_A_g = matrixrgb('matchRGB_A','green',filter)\",\n\"matrixarray_A_b = matrixrgb('matchRGB_A','blue',filter)\",\"matrixarray_B_r = matrixrgb('matchRGB_B','red',filter)\",\n\"matrixarray_B_g = matrixrgb('matchRGB_B','green',filter)\",\"matrixarray_B_b = matrixrgb('matchRGB_B','blue',filter)\",\n\"matrixalphaarray_A = samplealpha('matchRGB_A',filter)\",\"matrixalphaarray_B = samplealpha('matchRGB_B',filter)\",\"calculate()\"]\n\n#判断source target有无alpha通道，如无，弹床报错并跳过之后进程\nfor i in nuke.toNode('matchRGB_A').channels():\n    if i != 'rgba.alpha':\n        A_have_alpha = 0\n    else:\n        A_have_alpha = 1\n        break    \n\nfor j in nuke.toNode('matchRGB_B').channels():\n    if j != 'rgba.alpha':\n        B_have_alpha = 0\n    else:\n        B_have_alpha = 1\n        break\n\nif A_have_alpha == 1 and B_have_alpha == 1:\n    task = nuke.ProgressTask(\"Calculate\")\n    task.setProgress(0)\n    for i in range(9):\n        if task.isCancelled():\n            del task\n            break\n        if expressionlist\[i].find('_') != -1:\n            if expressionlist\[i].split('_')\[1] == 'A':\n                if expressionlist\[i].find('red') != -1:\n                    message_1 = 'calculate source red......'\n                elif expressionlist\[i].find('green') != -1:\n                    message_1 = 'calculate source green......'\n                elif expressionlist\[i].find('blue') != -1:\n                    message_1 = 'calculate source blue......'\n                elif expressionlist\[i].find('alpha') != -1:\n                    message_1 = 'calculate source alpha......'       \n            else:\n                if expressionlist\[i].find('red') != -1:\n                    message_1 = 'calculate target red......'\n                elif expressionlist\[i].find('green') != -1:\n                    message_1 = 'calculate target green......'\n                elif expressionlist\[i].find('blue') != -1:\n                    message_1 = 'calculate target blue......'\n                elif expressionlist\[i].find('alpha') != -1:\n                    message_1 = 'calculate target alpha......'   \n        else:    \n            message_1 = 'calculate'\n        task.setMessage(message_1)\n        exec(expressionlist\[i])\n        task.setProgress((i+1)*11+1)\n        time.sleep( 0.05 )\n    try:\n        del task\n    except:\n        print \"that's all right\"\nelif A_have_alpha != 1 and B_have_alpha == 1:\n    nuke.message('Source sequence need alpha channel!')\nelif A_have_alpha == 1 and B_have_alpha != 1:\n    nuke.message('Target sequence need alpha channel!')\nelse:\n    nuke.message('Source sequence and target sequence need alpha channel!')"}
+ addUserKnob {22 create_grade l "  CreateGrade   " -STARTLINE T "#################################################################################### \n##########生成相应的集中区域分布数组###########\n\ndef convertmatrix(matrixarray,alphaarray):\n\n    max_A = max(nuke.thisNode().knob('source_max').value())\n    max_B = max(nuke.thisNode().knob('target_max').value())\n\n    max_AB = max(\[max_A,max_B])\n\n    alphaarray = (alphaarray == 1)\n\n    convertmatrixarr = histogram(matrixarray * alphaarray,1000,range = \[0,max_AB])\n\n    convertmatrixarr\[0]\[0] = convertmatrixarr\[0]\[0] - (alphaarray == 0).sum()\n\n    return convertmatrixarr\n\n\nconvertmatrix_A_r = convertmatrix(matrixarray_A_r,matrixalphaarray_A)\nconvertmatrix_A_g = convertmatrix(matrixarray_A_g,matrixalphaarray_A)\nconvertmatrix_A_b = convertmatrix(matrixarray_A_b,matrixalphaarray_A)\nconvertmatrix_B_r = convertmatrix(matrixarray_B_r,matrixalphaarray_B)\nconvertmatrix_B_g = convertmatrix(matrixarray_B_g,matrixalphaarray_B)\nconvertmatrix_B_b = convertmatrix(matrixarray_B_b,matrixalphaarray_B)\n\n\n#################################################################################### \n####对histogram做一个中值滤波处理#####################################################\ndef median(convertmatrix):\n\n    medianmatrix = \[]\n    medianmatrix_temp = \[]\n\n    list_num = \[]\n    list_region = \[]\n\n    for i in convertmatrix\[0]:\n        list_num.append(i)\n    for j in convertmatrix\[1]:\n        list_region.append(j)\n\n    convertmatrix = \[list_num,list_region]\n\n    for i in range(len(convertmatrix\[0])):\n        if i == 0:\n            medianmatrixvar = (convertmatrix\[0]\[0] + (convertmatrix\[0]\[0] + convertmatrix\[0]\[1] + convertmatrix\[0]\[2]) / 3) / 2\n            medianmatrix.append(medianmatrixvar)\n            medianmatrix_tempvar = (convertmatrix\[1]\[0] + (convertmatrix\[1]\[0] + convertmatrix\[1]\[1] + convertmatrix\[1]\[2]) / 3) / 2\n            medianmatrix_temp.append(medianmatrix_tempvar)\n\n        if i > 0 and i < len(convertmatrix\[0])-1:\n            list = \[convertmatrix\[0]\[i - 1],convertmatrix\[0]\[i],convertmatrix\[0]\[i + 1]]\n            list.sort()\n            medianmatrixvar = (list\[1] + sum(list)/len(list) + convertmatrix\[0]\[i])/3\n            medianmatrix.append(medianmatrixvar)\n            medianmatrix_tempvar = (convertmatrix\[1]\[i-1]*convertmatrix\[0]\[i-1]**2+convertmatrix\[1]\[i+1]*convertmatrix\[0]\[i+1]**2+convertmatrix\[1]\[i]*convertmatrix\[0]\[i]**2)/(convertmatrix\[0]\[i-1]**2+convertmatrix\[0]\[i]**2+convertmatrix\[0]\[i+1]**2)\n            medianmatrix_temp.append(medianmatrix_tempvar)     \n\n        if i == len(convertmatrix\[0])-1:\n            medianmatrixvar = (convertmatrix\[0]\[len(convertmatrix\[0])-1] + (convertmatrix\[0]\[len(convertmatrix\[0])-1] + convertmatrix\[0]\[len(convertmatrix\[0])-2] + convertmatrix\[0]\[len(convertmatrix\[0])-3]) / 3) / 2\n            medianmatrix.append(medianmatrixvar)\n            medianmatrix_tempvar = (convertmatrix\[1]\[len(convertmatrix\[0])-1] + (convertmatrix\[1]\[len(convertmatrix\[0])-1] + convertmatrix\[1]\[len(convertmatrix\[0])-2] + convertmatrix\[1]\[len(convertmatrix\[0])-3]) / 3) / 2\n            medianmatrix_temp.append(medianmatrix_tempvar)  \n\n    medianconvertmatrix = \[medianmatrix,medianmatrix_temp]\n\n    return medianconvertmatrix\n\n####找出特征点 find the feature#####################################################\n    #########################################################################\n    ################ ######################################################## \n    ################ ########################################################\n    ############### #########################################################\n    #######   ##### ################    ######### ###########################\n    ##### #### #### ### ####### ### #### ####### ########     ##### ###   ###\n    #### ###### ## ### ####### ### ##########       ### ###### #### ## ######\n    ### ########## ### ####### ####   ######### #####  #        ####  #######\n    ### ########## ### ######  ########## #### ####### ############# ########\n    #### ##### ### #### # ## ## ### ##### #### ## #####  #### ###### ########\n    ######   ##### ####### ##### ###    ####### ########   # ###### #########\n    #########################################################################\n    #通过hierarchical cluster聚类算法获得两个主要波峰###\n    #########################################################################\n\n\n\n###聚类算法子函数,找出相邻数值最大值并###\n\ndef cluster(crest,crest_temp):\n\n    #合并相似数值\n\n    minuscrest = \[]\n\n    lencrest = len(crest)\n\n\n    for i in range(1,lencrest):\n        minuscrest.append(abs(crest\[i]-crest\[i-1]))\n\n    min_minuscrest = min(minuscrest)\n    \n    while min(minuscrest) == min_minuscrest:\n        j = minuscrest.index(min_minuscrest)\n        crest\[j] = (crest\[j]**2 + crest\[j + 1]**2) / (crest\[j] + crest\[j + 1])\n        crest_temp\[j] = (crest_temp\[j]*crest\[j] + crest_temp\[j + 1]*crest\[j + 1]) / (crest\[j] + crest\[j + 1])\n        crest = crest\[:j+1] + crest\[j+2:]\n        crest_temp = crest_temp\[:j+1] + crest_temp\[j+2:]\n        minuscrest.remove(min_minuscrest)\n\n    #聚类\n    newcrest = \[]\n    newcrest_temp = \[]       \n\n    if crest\[0] > crest\[1] and crest_temp\[0] != 0:\n        newcrest.append((crest\[0]**2 + crest\[1]**2 + crest\[2]**2)/(crest\[0] + crest\[1] + crest\[2]))\n        newcrest_temp.append((crest\[0]**2*crest_temp\[0] + crest\[1]**2*crest_temp\[1] + crest\[2]**2*crest_temp\[2])/(crest\[0]**2 + crest\[1]**2 + crest\[2]**2))\n    for i in range(1,len(crest)-1):\n        if crest\[i] >= crest\[i-1] and crest\[i] >= crest\[i+1]:\n            newcrest.append((crest\[i]**2 + crest\[i-1]**2 + crest\[i+1]**2)/(crest\[i] + crest\[i-1] + crest\[i+1]))\n            newcrest_temp.append((crest_temp\[i]*crest\[i]**2 + crest_temp\[i-1]*crest\[i-1]**2 + crest_temp\[i+1]*crest\[i+1]**2)/(crest\[i]**2 + crest\[i-1]**2 + crest\[i+1]**2))\n    if crest\[len(crest)-1] > crest\[len(crest)-2]:\n        newcrest.append((crest\[len(crest)-1]**2 + crest\[len(crest)-2]**2 + crest\[len(crest)-3]**2)/(crest\[len(crest)-1] + crest\[len(crest)-2] + crest\[len(crest)-3]))\n        newcrest_temp.append((crest\[len(crest)-1]**2*crest_temp\[len(crest)-1] + crest\[len(crest)-2]**2*crest_temp\[len(crest)-2] + crest\[len(crest)-3]**2*crest_temp\[len(crest)-3])/(crest\[len(crest)-1]**2 + crest\[len(crest)-2]**2 + crest\[len(crest)-3]**2))\n\n    return \[newcrest,newcrest_temp]\n\n###对聚类算法子函数进行循环###\n###确保有两个以上分开的不相连波峰###\n\ndef loopcluster(crestlist,crest_templist):\n    newcrestlist = \[]\n    newcrest_templist = \[]\n    while len(cluster(crestlist,crest_templist)\[0]) >= 15:\n        newcrestlist = cluster(crestlist,crest_templist)\[0]\n        newcrest_templist = cluster(crestlist,crest_templist)\[1]\n        if len(cluster(newcrestlist,newcrest_templist)\[0]) <= 2:\n            newcrestlist = crestlist\n            newcrest_templist = crest_templist\n            break\n        crestlist = newcrestlist\n        crest_templist = newcrest_templist\n    #print newcrestlist\n\n    return \[newcrestlist,newcrest_templist]\n\n\n###定义一个以面积划分区域的函数###\n\ndef proportion(crestlist,crest_templist):\n    \n    proportionlist = \[]\n    for i in range(len(crestlist)-1):\n        proportionlist.append(crestlist\[i]**2 + crestlist\[i+1]**2)                             #求面积\n        \n    maxproportion_1 = max(proportionlist)                                                #找到最大面积\n    indexmaxprop_1 = proportionlist.index(maxproportion_1)                               #获得prop索引\n\n    if crestlist\[indexmaxprop_1] > crestlist\[indexmaxprop_1+1]:                          #修正crest索引\n        indexmaxcrest_1 = indexmaxprop_1\n    else:\n        indexmaxcrest_1 = indexmaxprop_1 + 1\n\n    #crestlist_1 = crestlist\[indexmaxcrest_1]                                              #找到最大波峰值\n    #crest_templist_1 = crest_templist\[indexmaxcrest_1]                                    #找到对应的区间位置\n\n    ############################################################\n    #移除面积列表和波峰列表中的最大值及左右附近值\n    #定义主波左右范围\n\n    if indexmaxprop_1 > 0:\n        left = indexmaxprop_1\n        while left > 0 and crestlist\[left-1] <= crestlist\[left]:\n            left = left - 1\n    else:\n        left = 0\n\n\n    if indexmaxprop_1 + 1 < len(proportionlist):\n        right = indexmaxprop_1 + 1\n        while right < len(crestlist) - 1 and crestlist\[right + 1] <= crestlist\[right]:\n            right = right + 1\n    else:\n        right = len(crestlist) - 1\n\n\n    ############################################################\n    #得到第一波峰平均位置期望\n\n    rangeindex = \[]\n    for i in range(left,right+1):\n        if crestlist\[i] >= sum(\[crestlist\[j] for j in range(left,right+1)])/(right + 1 - left) + crestlist\[indexmaxcrest_1] * sqrt(var(\[crestlist\[j] for j in range(left,right+1)])) / sum(\[crestlist\[j] for j in range(left,right+1)]):\n            rangeindex.append(i)\n    crestlist_1 = sum(\[crestlist\[i]**2 for i in rangeindex])/sum(\[crestlist\[i] for i in rangeindex])                                                                                                       #找到最大波峰值\n    crest_templist_1 = sum(\[crest_templist\[i]*crestlist\[i] for i in rangeindex])/sum(\[crestlist\[i] for i in rangeindex])                                                                #找到对应的区间位置\n\n\n    ############################################################\n    #移除面积列表和波峰列表中的最大值及左右附近值\n\n    if left <= 0:\n        if right < len(proportionlist):\n            newprop = proportionlist\[right+1:]\n            crestlist = crestlist\[right:] \n            crest_templist = crest_templist\[right:] \n        else:\n            newprop = \[]\n            crestlist = \[]\n            crest_templist = \[]\n    else:\n        if right < len(proportionlist):\n            newprop = proportionlist\[:left] + proportionlist\[right+1:]  #去掉最大值与相邻值,得到新的面积列表\n            crestlist = crestlist\[:left+1]+crestlist\[right:] \n            crest_templist = crest_templist\[:left+1] + crest_templist\[right:] \n        else:\n            newprop = proportionlist\[:left]\n            crestlist = crestlist\[:left+1]\n            crest_templist = crest_templist\[:left+1]\n\n    ############################################################\n\n    if len(newprop) > 0:\n        maxproportion_2 = max(newprop)                                                       #找到第二大面积\n        indexmaxprop_2 = newprop.index(maxproportion_2)                                      #获得索引\n        crestlist_2 = max(crestlist\[indexmaxprop_2],crestlist\[indexmaxprop_2+1])             #找到第二大波峰值\n        crest_templist_2 = crest_templist\[crestlist.index(crestlist_2)]                      #找到第二大波峰值对应的区间位置\n        return \[\[crestlist_1,crestlist_2],\[crest_templist_1,crest_templist_2]]\n\n    else:\n        return \[\[crestlist_1],\[crest_templist_1]]\n\n\n\n\n###找出histogram图像特征###\n\ndef findfeature(convertmatrixarr):\n\n    #平滑处理    \n    crest = median(convertmatrixarr)\[0]\n    crest_templist = median(convertmatrixarr)\[1]\n\n    #转化为列表\n    list_num = convertmatrixarr\[0]\n    list_region = convertmatrixarr\[1]\n\n    #去除干扰项,影响太小的值被排除#\n\n    avg = sum(list_num)/len(list_num)\n    maxcrest = max(list_num)\n    newcrest1 = \[]\n    newcrest_templist1 = \[]\n\n    for i in range(len(list_num)):\n        if list_num\[i] > avg * avg / maxcrest:\n            newcrest1.append(list_num\[i])\n            newcrest_templist1.append(list_region\[i])\n        else:\n            pass\n\n    #调用loopcluster函数进行N次聚类\n    \n    newcrestarray = loopcluster(newcrest1,newcrest_templist1)\n    newcrest4 = newcrestarray\[0]\n    newcrest_templist4 = newcrestarray\[1]\n\n    #print newcrest4\n    #print newcrest_templist4\n\n\n    #合并特征集#\n    #根据之前聚类算法所得数列，对其通过面积法找出特征点#\n    #面积法的关键是找出一个面积占主要空间的波峰，然后找出第二大的不相连的波峰面积#\n    ####找出最大值####   \n\n    crestmatrix4 = \[newcrest4,newcrest_templist4] \n    newcrest4 = median(crestmatrix4)\[0]       #最后一次剔除杂波\n    newcrest_templist4 = median(crestmatrix4)\[1]  #最后一次剔除杂波\n\n    newcrest5_array = proportion(newcrest4,newcrest_templist4)  #面积法找出波峰\n    newcrest5 = newcrest5_array\[0]\n    newcrest_templist5 = newcrest5_array\[1]\n\n\n    ####排序，按照区间顺序进行排序####\n    if len(newcrest5) > 1:\n        if newcrest_templist5\[0] > newcrest_templist5\[1]:\n            newcrest_templist5 = sort(newcrest_templist5)\n            newcrest5 = sort(newcrest5)\n\n\n    return \[newcrest5,newcrest_templist5]\n\n\n######################################################################################\n######################################################################################\n\n\nfindfeature_A_r = findfeature(convertmatrix_A_r)\nprint findfeature_A_r\n\nfindfeature_A_g = findfeature(convertmatrix_A_g)\nprint findfeature_A_g\n\nfindfeature_A_b = findfeature(convertmatrix_A_b)\nprint findfeature_A_b\n\nfindfeature_B_r = findfeature(convertmatrix_B_r)\nprint findfeature_B_r\n\nfindfeature_B_g = findfeature(convertmatrix_B_g)\nprint findfeature_B_g\n\nfindfeature_B_b = findfeature(convertmatrix_B_b)\nprint findfeature_B_b \n\n\n\n#source\nsource_finalcrest_1 = \[findfeature_A_r\[1]\[0],findfeature_A_g\[1]\[0],findfeature_A_b\[1]\[0]]\nsource_finalcrest_intensity_1 = \[findfeature_A_r\[0]\[0],findfeature_A_g\[0]\[0],findfeature_A_b\[0]\[0]]\nsource_finalcrest_2 = \[]\nsource_finalcrest_intensity_2 = \[]\n\nif len(findfeature_A_r\[0]) > 1:\n    source_finalcrest_2.append(findfeature_A_r\[1]\[1])\n    source_finalcrest_intensity_2.append(findfeature_A_r\[0]\[1])\nelse:\n    source_finalcrest_2.append(-1)\n    source_finalcrest_intensity_2.append(-1)\n\nif len(findfeature_A_g\[0]) > 1:\n    source_finalcrest_2.append(findfeature_A_g\[1]\[1])\n    source_finalcrest_intensity_2.append(findfeature_A_g\[0]\[1])\nelse:\n    source_finalcrest_2.append(-1)\n    source_finalcrest_intensity_2.append(-1)\n\nif len(findfeature_A_b\[0]) > 1:\n    source_finalcrest_2.append(findfeature_A_b\[1]\[1])\n    source_finalcrest_intensity_2.append(findfeature_A_b\[0]\[1])\nelse:\n    source_finalcrest_2.append(-1)\n    source_finalcrest_intensity_2.append(-1)   \n\nfor i in range(3):\n    newrange = range(3)\n    newrange.remove(i)\n    if source_finalcrest_2\[i] != -1 and abs(source_finalcrest_intensity_1\[i]-source_finalcrest_intensity_1\[newrange\[0]]) > abs(source_finalcrest_intensity_1\[i]-source_finalcrest_intensity_2\[newrange\[0]]) \\\n    and abs(source_finalcrest_intensity_1\[i]-source_finalcrest_intensity_1\[newrange\[1]]) > abs(source_finalcrest_intensity_1\[i]-source_finalcrest_intensity_2\[newrange\[1]]) \\\n    and abs(source_finalcrest_intensity_2\[i]-source_finalcrest_intensity_2\[newrange\[1]]) > abs(source_finalcrest_intensity_2\[i]-source_finalcrest_intensity_1\[newrange\[1]]) \\\n    and abs(source_finalcrest_intensity_2\[i]-source_finalcrest_intensity_2\[newrange\[0]]) > abs(source_finalcrest_intensity_2\[i]-source_finalcrest_intensity_1\[newrange\[0]]):\n        sourceinten = source_finalcrest_intensity_1\[i]\n        source_finalcrest_intensity_1\[i] = source_finalcrest_intensity_2\[i]\n        source_finalcrest_intensity_2\[i] = sourceinten\n\n        sourcetemp = source_finalcrest_2\[i]\n        source_finalcrest_1\[i] = source_finalcrest_2\[i]\n        source_finalcrest_2\[i] = sourcetemp\n\nnuke.thisNode().knob('source_crest_1').setValue(source_finalcrest_1)\nnuke.thisNode().knob('source_crest_intensity_1').setValue(source_finalcrest_intensity_1)\nnuke.thisNode().knob('source_crest_2').setValue(source_finalcrest_2)\nnuke.thisNode().knob('source_crest_intensity_2').setValue(source_finalcrest_intensity_2)  \n\n#target\ntarget_finalcrest_1 = \[findfeature_B_r\[1]\[0],findfeature_B_g\[1]\[0],findfeature_B_b\[1]\[0]]\ntarget_finalcrest_intensity_1 = \[findfeature_B_r\[0]\[0],findfeature_B_g\[0]\[0],findfeature_B_b\[0]\[0]]\ntarget_finalcrest_2 = \[]\ntarget_finalcrest_intensity_2 = \[]\n\nif len(findfeature_B_r\[0]) > 1:\n    target_finalcrest_2.append(findfeature_B_r\[1]\[1])\n    target_finalcrest_intensity_2.append(findfeature_B_r\[0]\[1])\nelse:\n    target_finalcrest_2.append(-1)\n    target_finalcrest_intensity_2.append(-1)\n\nif len(findfeature_B_g\[0]) > 1:\n    target_finalcrest_2.append(findfeature_B_g\[1]\[1])\n    target_finalcrest_intensity_2.append(findfeature_B_g\[0]\[1])\nelse:\n    target_finalcrest_2.append(-1)\n    target_finalcrest_intensity_2.append(-1)\n\nif len(findfeature_B_b\[0]) > 1:\n    target_finalcrest_2.append(findfeature_B_b\[1]\[1])\n    target_finalcrest_intensity_2.append(findfeature_B_b\[0]\[1])\nelse:\n    target_finalcrest_2.append(-1)\n    target_finalcrest_intensity_2.append(-1)   \n\n\nfor i in range(3):\n    newrange = range(3)\n    newrange.remove(i)\n    if target_finalcrest_2\[i] != -1 and abs(target_finalcrest_intensity_1\[i]-target_finalcrest_intensity_1\[newrange\[0]]) > abs(target_finalcrest_intensity_1\[i]-target_finalcrest_intensity_2\[newrange\[0]])\\\n    and abs(target_finalcrest_intensity_1\[i]-target_finalcrest_intensity_1\[newrange\[1]]) > abs(target_finalcrest_intensity_1\[i]-target_finalcrest_intensity_2\[newrange\[1]])\\\n    and abs(target_finalcrest_intensity_2\[i]-target_finalcrest_intensity_2\[newrange\[1]]) > abs(target_finalcrest_intensity_2\[i]-target_finalcrest_intensity_1\[newrange\[1]])\\\n    and abs(target_finalcrest_intensity_2\[i]-target_finalcrest_intensity_2\[newrange\[0]]) > abs(target_finalcrest_intensity_2\[i]-target_finalcrest_intensity_1\[newrange\[0]]):\n        targetinten = target_finalcrest_intensity_1\[i]\n        target_finalcrest_intensity_1\[i] = target_finalcrest_intensity_2\[i]\n        target_finalcrest_intensity_2\[i] = targetinten\n\n        targettemp = target_finalcrest_2\[i]\n        target_finalcrest_1\[i] = target_finalcrest_2\[i]\n        target_finalcrest_2\[i] = targettemp\n\n\nnuke.thisNode().knob('target_crest_1').setValue(target_finalcrest_1)\nnuke.thisNode().knob('target_crest_intensity_1').setValue(target_finalcrest_intensity_1)\nnuke.thisNode().knob('target_crest_2').setValue(target_finalcrest_2)\nnuke.thisNode().knob('target_crest_intensity_2').setValue(target_finalcrest_intensity_2)  "}
+ addUserKnob {22 switch l Switch t "switch between seven kinds of luminace" -STARTLINE T "if nuke.thisNode().knob('switchbutton').value() == 0:\n    nuke.thisNode().knob('switchbutton').setValue(1)\nelif nuke.thisNode().knob('switchbutton').value() == 1:\n    nuke.thisNode().knob('switchbutton').setValue(2)\nelif nuke.thisNode().knob('switchbutton').value() == 2:\n    nuke.thisNode().knob('switchbutton').setValue(3)\nelif nuke.thisNode().knob('switchbutton').value() == 3:\n    nuke.thisNode().knob('switchbutton').setValue(4)\nelif nuke.thisNode().knob('switchbutton').value() == 4:\n    nuke.thisNode().knob('switchbutton').setValue(5)\nelif nuke.thisNode().knob('switchbutton').value() == 5:\n    nuke.thisNode().knob('switchbutton').setValue(6)\nelse:\n    nuke.thisNode().knob('switchbutton').setValue(0)\n"}
+ addUserKnob {3 switchbutton l INVISIBLE +INVISIBLE}
+ switchbutton 5
+ addUserKnob {26 ""}
+ addUserKnob {18 source_max l Source_max: R -100 100}
+ source_max {1 1 1}
+ addUserKnob {6 source_max_panelDropped l "panel dropped state" -STARTLINE +HIDDEN}
+ addUserKnob {18 source_max_1 l Source_max_1 R -100 100}
+ source_max_1 {1 1 1}
+ addUserKnob {6 source_max_1_panelDropped l "panel dropped state" -STARTLINE +HIDDEN}
+ addUserKnob {18 source_min l Source_min: R -100 100}
+ source_min {0 0 0}
+ addUserKnob {6 source_min_panelDropped l "panel dropped state" -STARTLINE +HIDDEN}
+ addUserKnob {18 source_min_1 l Source_min_1 R -100 100}
+ source_min_1 {0 0 0}
+ addUserKnob {6 source_min_1_panelDropped l "panel dropped state" -STARTLINE +HIDDEN}
+ addUserKnob {6 sourc_min_1_panelDropped l "panel dropped state" -STARTLINE +HIDDEN}
+ addUserKnob {18 source_expectation l INVISIBLE +INVISIBLE R -100 100}
+ source_expectation {0.4672338309 0.4602909255 0.4368287949}
+ addUserKnob {6 source_expectation_panelDropped l "panel dropped state" -STARTLINE +HIDDEN}
+ addUserKnob {16 luminsource l INVISIBLE +INVISIBLE}
+ luminsource 0.2004588048
+ addUserKnob {18 source_variance l INVISIBLE +INVISIBLE R -100 100}
+ source_variance {0.1130359297 0.107375488 0.1020190056}
+ addUserKnob {6 source_variance_panelDropped l "panel dropped state" -STARTLINE +HIDDEN}
+ addUserKnob {26 ""}
+ addUserKnob {18 target_max l Target_max: R -100 100}
+ target_max {1 1 1}
+ addUserKnob {6 target_max_panelDropped l "panel dropped state" -STARTLINE +HIDDEN}
+ addUserKnob {18 target_max_1 l Target_max_1 R -100 100}
+ target_max_1 {1 1 1}
+ addUserKnob {6 target_max_1_panelDropped l "panel dropped state" -STARTLINE +HIDDEN}
+ addUserKnob {18 target_min l Target_min: R -100 100}
+ target_min {0 0 0}
+ addUserKnob {6 target_min_panelDropped l "panel dropped state" -STARTLINE +HIDDEN}
+ addUserKnob {18 target_min_1 l Target_min_1 R -100 100}
+ target_min_1 {0 0 0}
+ addUserKnob {6 target_min_1_panelDropped l "panel dropped state" -STARTLINE +HIDDEN}
+ addUserKnob {18 target_expectation l INVISIBLE +INVISIBLE R -100 100}
+ target_expectation {0.3659034565 0.3676271199 0.3597737875}
+ addUserKnob {6 target_expectation_panelDropped l "panel dropped state" -STARTLINE +HIDDEN +INVISIBLE}
+ addUserKnob {16 lumintarget l INVISIBLE +INVISIBLE}
+ lumintarget 0.2407369807
+ addUserKnob {18 target_variance l INVISIBLE +INVISIBLE R -100 100}
+ target_variance {0.1066954206 0.09958302825 0.08660797525}
+ addUserKnob {6 target_variance_panelDropped l "panel dropped state" -STARTLINE +HIDDEN}
+ addUserKnob {26 ""}
+ addUserKnob {26 source_crest l "" +STARTLINE T "Show the final clustering crest result of source"}
+ addUserKnob {18 source_crest_1 l Crest_1}
+ source_crest_1 {0.3 0.3 0.3}
+ addUserKnob {6 source_crest_1_panelDropped l "panel dropped state" -STARTLINE +HIDDEN}
+ addUserKnob {16 luminsourcecrest1 l INVISIBLE +INVISIBLE}
+ luminsourcecrest1 {{"source_crest_1.r*0.3 + source_crest_1.g*0.6 + source_crest_1.b*0.1" i}}
+ addUserKnob {18 source_crest_intensity_1 l INVISIBLE +INVISIBLE}
+ source_crest_intensity_1 {140.3444434 165.7122453 145.49038}
+ addUserKnob {6 source_crest_intensity_1_panelDropped l "panel dropped state" -STARTLINE +HIDDEN}
+ addUserKnob {18 source_crest_2 l Crest_2}
+ source_crest_2 {0.6 0.6 0.6}
+ addUserKnob {6 source_crest_2_panelDropped l "panel dropped state" -STARTLINE +HIDDEN}
+ addUserKnob {16 luminsourcecrest2 l INVISIBLE +INVISIBLE}
+ luminsourcecrest2 {{"source_crest_2.r*0.3 + source_crest_2.g*0.6 + source_crest_2.b*0.1" i}}
+ addUserKnob {18 source_crest_intensity_2 l INVISIBLE +INVISIBLE}
+ source_crest_intensity_2 {220.3114475 235.6536059 248.5867931}
+ addUserKnob {6 source_crest_intensity_2_panelDropped l "panel dropped state" -STARTLINE +HIDDEN}
+ addUserKnob {26 ""}
+ addUserKnob {26 target_crest l "" +STARTLINE T "Show the final clustering crest result of target"}
+ addUserKnob {18 target_crest_1 l Crest_1}
+ target_crest_1 {0.3 0.3 0.3}
+ addUserKnob {6 target_crest_1_panelDropped l "panel dropped state" -STARTLINE +HIDDEN}
+ addUserKnob {16 lumintargetcrest1 l INVISIBLE +INVISIBLE}
+ lumintargetcrest1 {{"target_crest_1.r*0.3 + target_crest_1.g*0.6 + target_crest_1.b*0.1" i}}
+ addUserKnob {18 target_crest_intensity_1 l INVISIBLE +INVISIBLE}
+ target_crest_intensity_1 {291.1396093 285.0836211 290.0387715}
+ addUserKnob {6 target_crest_intensity_1_panelDropped l "panel dropped state" -STARTLINE +HIDDEN}
+ addUserKnob {18 target_crest_2 l Crest_2}
+ target_crest_2 {0.6 0.6 0.6}
+ addUserKnob {6 target_crest_2_panelDropped l "panel dropped state" -STARTLINE +HIDDEN}
+ addUserKnob {16 lumintargetcrest2 l INVISIBLE +INVISIBLE}
+ lumintargetcrest2 {{"target_crest_2.r*0.3 + target_crest_2.g*0.6 + target_crest_2.b*0.1" i}}
+ addUserKnob {18 target_crest_intensity_2 l INVISIBLE +INVISIBLE}
+ target_crest_intensity_2 {98.44875252 102.5693587 120.0510585}
+ addUserKnob {6 target_crest_intensity_2_panelDropped l "panel dropped state" -STARTLINE +HIDDEN}
+ addUserKnob {26 ""}
+ addUserKnob {20 analysis l Analysis}
+ addUserKnob {26 info2 l "Info: " T "Show the distance and similars between two graph in histogram."}
+ addUserKnob {26 ""}
+ addUserKnob {22 euclidean_distance_score l "  EuclideanDistance  " T "#################################################################################### \n##########生成相应的集中区域分布数组###########\n\ndef convertmatrix(matrixarray,alphaarray):\n\n    max_A = max(nuke.thisNode().knob('source_max').value())\n    max_B = max(nuke.thisNode().knob('target_max').value())\n\n    max_AB = max(\[max_A,max_B])\n\n    alphaarray = (alphaarray == 1)\n\n    convertmatrixarr = histogram(matrixarray * alphaarray,1000,range = \[0,max_AB])\n\n    convertmatrixarr\[0]\[0] = convertmatrixarr\[0]\[0] - (alphaarray == 0).sum()\n\n    return convertmatrixarr\n\n\nconvertmatrix_A_r = convertmatrix(matrixarray_A_r,matrixalphaarray_A)\nconvertmatrix_A_g = convertmatrix(matrixarray_A_g,matrixalphaarray_A)\nconvertmatrix_A_b = convertmatrix(matrixarray_A_b,matrixalphaarray_A)\nconvertmatrix_B_r = convertmatrix(matrixarray_B_r,matrixalphaarray_B)\nconvertmatrix_B_g = convertmatrix(matrixarray_B_g,matrixalphaarray_B)\nconvertmatrix_B_b = convertmatrix(matrixarray_B_b,matrixalphaarray_B)\n\n\n#################################################################################### \n#EUCLIDEAN DISTANCE SCORE利用欧几里得距离评价来反求调整值###########################\n\ndef euclideandistancescore(array_A,array_B):\n    \n    sum_of_squares = sum(\[pow(array_A\[0]\[count] - array_B\[0]\[count],2) for count in range(1000)])\n\n    return 1 / (  1 + sqrt ( sum_of_squares ) )\n\n\n\n\neuclideandistancescore_R = euclideandistancescore(convertmatrix_A_r,convertmatrix_B_r)\neuclideandistancescore_G = euclideandistancescore(convertmatrix_A_g,convertmatrix_B_g)\neuclideandistancescore_B = euclideandistancescore(convertmatrix_A_b,convertmatrix_B_b)\n\nprint euclideandistancescore(convertmatrix_A_r,convertmatrix_B_r)\nprint euclideandistancescore(convertmatrix_A_g,convertmatrix_B_g)\nprint euclideandistancescore(convertmatrix_A_b,convertmatrix_B_b)\n\neuclideandistancescore_RGB = \[euclideandistancescore_R,euclideandistancescore_G,euclideandistancescore_B]\n#euclideandistancescore_RGB  = str(euclideandistancescore_RGB)\nnuke.thisNode().knob('euclideandistancescore').setValue(euclideandistancescore_RGB)\n" +STARTLINE}
+ addUserKnob {22 pearson_correlation_score l "  PearsonCorrelationScore  " T "#################################################################################### \n##########生成相应的集中区域分布数组###########\n\ndef convertmatrix(matrixarray,alphaarray):\n\n    max_A = max(nuke.thisNode().knob('source_max').value())\n    max_B = max(nuke.thisNode().knob('target_max').value())\n\n    max_AB = max(\[max_A,max_B])\n\n    alphaarray = (alphaarray == 1)\n\n    convertmatrixarr = histogram(matrixarray * alphaarray,1000,range = \[0,max_AB])\n\n    convertmatrixarr\[0]\[0] = convertmatrixarr\[0]\[0] - (alphaarray == 0).sum()\n\n    return convertmatrixarr\n\nconvertmatrix_A_r = convertmatrix(matrixarray_A_r,matrixalphaarray_A)\nconvertmatrix_A_g = convertmatrix(matrixarray_A_g,matrixalphaarray_A)\nconvertmatrix_A_b = convertmatrix(matrixarray_A_b,matrixalphaarray_A)\nconvertmatrix_B_r = convertmatrix(matrixarray_B_r,matrixalphaarray_B)\nconvertmatrix_B_g = convertmatrix(matrixarray_B_g,matrixalphaarray_B)\nconvertmatrix_B_b = convertmatrix(matrixarray_B_b,matrixalphaarray_B)\n\n\n\n#################################################################################### \n#PEARSON CORRELATION SCORE利用皮尔逊相似度来反求调整值##############################\n\ndef pearsoncorrelationscore(array_A,array_B):\n\n    mean_A = sum(\[array_A\[0]\[count] for count in range(1000)]) / 1000\n    mean_B = sum(\[array_B\[0]\[count] for count in range(1000)]) / 1000\n    \n    print mean_A\n    print mean_B\n\n    sum_Apow = sum(\[pow(array_A\[0]\[count]-mean_A,2) for count in range(1000)])\n    sum_Bpow = sum(\[pow(array_B\[0]\[count]-mean_B,2) for count in range(1000)])\n\n    print sum_Apow\n    print sum_Bpow\n\n    num = sum(\[(array_A\[0]\[count]-mean_A)*(array_B\[0]\[count]-mean_B) for count in range(1000)])\n\n    print num\n\n    den = sqrt(sum_Apow) * sqrt(sum_Bpow)\n\n    print den\n\n    if den == 0:return 0\n\n    r = num/den\n\n    return r\n\n\n\n\npearsoncorrelationscore_R = pearsoncorrelationscore(convertmatrix_A_r,convertmatrix_B_r)\npearsoncorrelationscore_G = pearsoncorrelationscore(convertmatrix_A_g,convertmatrix_B_g)\npearsoncorrelationscore_B = pearsoncorrelationscore(convertmatrix_A_b,convertmatrix_B_b)  \n\nprint pearsoncorrelationscore(convertmatrix_A_r,convertmatrix_B_r)\nprint pearsoncorrelationscore(convertmatrix_A_g,convertmatrix_B_g)\nprint pearsoncorrelationscore(convertmatrix_A_b,convertmatrix_B_b)  \n\n\npearsoncorrelationscore_RGB = \[pearsoncorrelationscore_R,pearsoncorrelationscore_G,pearsoncorrelationscore_B]\n#pearsoncorrelationscore_RGB = str(pearsoncorrelationscore_RGB)\nnuke.thisNode().knob('pearsoncorrelationscore').setValue(pearsoncorrelationscore_RGB)" +STARTLINE}
+ addUserKnob {18 euclideandistancescore t "Show how similar of two histograms display in distance.\nIf value is 1,that means same,else means diffence.\nThis knob return value between 0 to 1."}
+ euclideandistancescore {0 0 0}
+ addUserKnob {6 euclideandistancescore_panelDropped l "panel dropped state" -STARTLINE +HIDDEN}
+ addUserKnob {18 pearsoncorrelationscore t "Show how similar of two histograms in shape.\n\nIf value is 1,that means same,else means diffence.\n\nThis knob return value between -1 to 1" R -1 1}
+ pearsoncorrelationscore {1 1 1}
+ addUserKnob {6 pearsoncorrelationscore_panelDropped l "panel dropped state" -STARTLINE +HIDDEN}
+}
+ BackdropNode {
+  inputs 0
+  name BackdropNode2
+  tile_color 0x8e388e00
+  label "match lumin_max_1\nmatch hue of expectation"
+  note_font_size 16
+  xpos 538
+  ypos -329
+  bdwidth 244
+  bdheight 281
+ }
+ BackdropNode {
+  inputs 0
+  name BackdropNode3
+  tile_color 0xaaaaaa00
+  label "match lumin_max\nmatch hue of crest\n"
+  note_font_size 25
+  xpos 217
+  ypos -330
+  bdwidth 319
+  bdheight 281
+ }
+ BackdropNode {
+  inputs 0
+  name BackdropNode1
+  tile_color 0x388e8e00
+  label "only match gamma\nno change in lumin_max"
+  note_font_size 25
+  xpos 783
+  ypos -332
+  bdwidth 450
+  bdheight 286
+ }
+ BackdropNode {
+  inputs 0
+  name BackdropNode5
+  tile_color 0x8e388e00
+  label "only match black &white"
+  note_font_size 25
+  xpos 1234
+  ypos -331
+  bdwidth 190
+  bdheight 284
+ }
+ Input {
+  inputs 0
+  name reference
+  selected true
+  xpos -80
+  ypos -333
+ }
+set N48173720 [stack 0]
+ Dot {
+  name Dot16
+  xpos -325
+  ypos -330
+ }
+set N481733b0 [stack 0]
+ Shuffle {
+  red blue
+  green blue
+  name Shuffle3
+  xpos -359
+  ypos -312
+ }
+set N48173e00 [stack 0]
+push 0
+push $N481733b0
+ Dot {
+  name Dot15
+  xpos -435
+  ypos -330
+ }
+set N48174170 [stack 0]
+ Shuffle {
+  green red
+  blue red
+  name Shuffle2
+  xpos -469
+  ypos -312
+ }
+set N481744e0 [stack 0]
+push $N48174170
+ Dot {
+  name Dot17
+  xpos -545
+  ypos -330
+ }
+ Shuffle {
+  red green
+  blue green
+  name Shuffle1
+  xpos -579
+  ypos -312
+ }
+set N48174bc0 [stack 0]
+ Merge2 {
+  inputs 3+1
+  operation min
+  name Merge1
+  xpos -579
+  ypos -288
+ }
+ Keyer {
+  combine intersect
+  invert true
+  operation "min keyer"
+  range {0.01 0.02 1 1}
+  name Keyer_min
+  xpos -579
+  ypos -264
+ }
+push $N48173e00
+push 0
+push $N48174bc0
+push $N481744e0
+ Merge2 {
+  inputs 3+1
+  operation max
+  name Merge2
+  xpos -359
+  ypos -288
+ }
+ Keyer {
+  operation "max keyer"
+  range {1 1 1 1}
+  name Keyer_max
+  xpos -359
+  ypos -264
+ }
+push $N48173720
+ Colorspace {
+  colorspace_out Cineon
+  maskChannelInput -rgba.alpha
+  name Colorspace2
+  xpos -80
+  ypos -309
+  disable {{"\[python 1-nuke.thisParent().knob('linear_mode').value()]"}}
+ }
+ NoOp {
+  name matchRGB_A
+  xpos -80
+  ypos -285
+ }
+set N48176060 [stack 0]
+ Grade {
+  blackpoint {{"\[python nuke.thisParent().knob('source_min').value()\\\[0\\]]"} {"\[python nuke.thisParent().knob('source_min').value()\\\[1\\]]"} {"\[python nuke.thisParent().knob('source_min').value()\\\[2\\]]"} {curve}}
+  whitepoint {{"\[python nuke.thisParent().knob('source_max').value()\\\[0\\]]"} {"\[python nuke.thisParent().knob('source_max').value()\\\[1\\]]"} {"\[python nuke.thisParent().knob('source_max').value()\\\[2\\]]"} {curve}}
+  black_clamp false
+  name Grade_standardize_A_2
+  xpos -190
+  ypos -253
+ }
+push $N48176060
+ Grade {
+  blackpoint {{"\[python min(\\\[nuke.thisParent().knob('source_min').value()\\\[0\\],nuke.thisParent().knob('source_min').value()\\\[1\\],nuke.thisParent().knob('source_min').value()\\\[2\\]\\])]"} {"\[python min(\\\[nuke.thisParent().knob('source_min').value()\\\[0\\],nuke.thisParent().knob('source_min').value()\\\[1\\],nuke.thisParent().knob('source_min').value()\\\[2\\]\\])]"} {"\[python min(\\\[nuke.thisParent().knob('source_min').value()\\\[0\\],nuke.thisParent().knob('source_min').value()\\\[1\\],nuke.thisParent().knob('source_min').value()\\\[2\\]\\])]"} {curve}}
+  whitepoint {{"\[python max(\\\[nuke.thisParent().knob('source_max').value()\\\[0\\],nuke.thisParent().knob('source_max').value()\\\[1\\],nuke.thisParent().knob('source_max').value()\\\[2\\]\\])]"} {"\[python max(\\\[nuke.thisParent().knob('source_max').value()\\\[0\\],nuke.thisParent().knob('source_max').value()\\\[1\\],nuke.thisParent().knob('source_max').value()\\\[2\\]\\])]"} {"\[python max(\\\[nuke.thisParent().knob('source_max').value()\\\[0\\],nuke.thisParent().knob('source_max').value()\\\[1\\],nuke.thisParent().knob('source_max').value()\\\[2\\]\\])]"} {curve}}
+  black_clamp false
+  name Grade_standardize_A
+  xpos -190
+  ypos -285
+ }
+push $N48176060
+ Grade {
+  blackpoint {{"\[python nuke.thisParent().knob('source_min_1').value()\\\[0\\]]"} {"\[python nuke.thisParent().knob('source_min_1').value()\\\[1\\]]"} {"\[python nuke.thisParent().knob('source_min_1').value()\\\[2\\]]"} {curve}}
+  whitepoint {{"\[python nuke.thisParent().knob('source_max_1').value()\\\[0\\]]"} {"\[python nuke.thisParent().knob('source_max_1').value()\\\[1\\]]"} {"\[python nuke.thisParent().knob('source_max_1').value()\\\[2\\]]"} {curve}}
+  black_clamp false
+  name Grade_standardize_A_3
+  xpos -189
+  ypos -221
+ }
+ Input {
+  inputs 0
+  name target
+  xpos 360
+  ypos -415
+  number 1
+ }
+set N7b72a240 [stack 0]
+ Colorspace {
+  colorspace_out Cineon
+  maskChannelInput -rgba.alpha
+  name Colorspace1
+  xpos 250
+  ypos -415
+  disable {{"\[python 1-nuke.thisParent().knob('linear_mode').value()]"}}
+ }
+ NoOp {
+  name matchRGB_B
+  xpos 250
+  ypos -391
+ }
+push $N48176060
+push $N7b72a240
+ Colorspace {
+  colorspace_out Cineon
+  maskChannelInput -rgba.alpha
+  name Colorspace4
+  xpos 360
+  ypos -391
+  disable {{"\[python 1-nuke.thisParent().knob('linear_mode').value()]"}}
+ }
+set N7b72ac90 [stack 0]
+ Dot {
+  name Dot1
+  xpos 394
+  ypos -258
+ }
+set N7b72b000 [stack 0]
+ Dot {
+  name Dot5
+  xpos 653
+  ypos -258
+ }
+set N7b72b370 [stack 0]
+ Dot {
+  name Dot7
+  xpos 846
+  ypos -258
+ }
+set N7b72b6e0 [stack 0]
+ Dot {
+  name Dot12
+  xpos 977
+  ypos -258
+ }
+set N7b72ba50 [stack 0]
+ Dot {
+  name Dot8
+  xpos 1116
+  ypos -258
+ }
+set N7b72bdc0 [stack 0]
+ Dot {
+  name Dot10
+  xpos 1326
+  ypos -258
+ }
+ Grade {
+  black {{"\[python (nuke.thisParent().knob('target_min_1').value()\\\[0\\]*nuke.thisParent().knob('source_max_1').value()\\\[0\\]-nuke.thisParent().knob('source_min_1').value()\\\[0\\]*nuke.thisParent().knob('target_max_1').value()\\\[0\\])/(nuke.thisParent().knob('target_min_1').value()\\\[0\\]-nuke.thisParent().knob('target_max_1').value()\\\[0\\])]"} {"\[python (nuke.thisParent().knob('target_min_1').value()\\\[1\\]*nuke.thisParent().knob('source_max_1').value()\\\[1\\]-nuke.thisParent().knob('source_min_1').value()\\\[1\\]*nuke.thisParent().knob('target_max_1').value()\\\[1\\])/(nuke.thisParent().knob('target_min_1').value()\\\[1\\]-nuke.thisParent().knob('target_max_1').value()\\\[1\\])]"} {"\[python (nuke.thisParent().knob('target_min_1').value()\\\[2\\]*nuke.thisParent().knob('source_max_1').value()\\\[2\\]-nuke.thisParent().knob('source_min_1').value()\\\[2\\]*nuke.thisParent().knob('target_max_1').value()\\\[2\\])/(nuke.thisParent().knob('target_min_1').value()\\\[2\\]-nuke.thisParent().knob('target_max_1').value()\\\[2\\])]"} {curve}}
+  white {{"\[python (nuke.thisParent().knob('source_min_1').value()\\\[0\\]-nuke.thisParent().knob('source_max_1').value()\\\[0\\]+nuke.thisParent().knob('target_min_1').value()\\\[0\\]*nuke.thisParent().knob('source_max_1').value()\\\[0\\]-nuke.thisParent().knob('target_max_1').value()\\\[0\\]*nuke.thisParent().knob('source_min_1').value()\\\[0\\])/(nuke.thisParent().knob('target_min_1').value()\\\[0\\]-nuke.thisParent().knob('target_max_1').value()\\\[0\\])]"} {"\[python (nuke.thisParent().knob('source_min_1').value()\\\[1\\]-nuke.thisParent().knob('source_max_1').value()\\\[1\\]+nuke.thisParent().knob('target_min_1').value()\\\[1\\]*nuke.thisParent().knob('source_max_1').value()\\\[1\\]-nuke.thisParent().knob('target_max_1').value()\\\[1\\]*nuke.thisParent().knob('source_min_1').value()\\\[1\\])/(nuke.thisParent().knob('target_min_1').value()\\\[1\\]-nuke.thisParent().knob('target_max_1').value()\\\[1\\])]"} {"\[python (nuke.thisParent().knob('source_min_1').value()\\\[2\\]-nuke.thisParent().knob('source_max_1').value()\\\[2\\]+nuke.thisParent().knob('target_min_1').value()\\\[2\\]*nuke.thisParent().knob('source_max_1').value()\\\[2\\]-nuke.thisParent().knob('target_max_1').value()\\\[2\\]*nuke.thisParent().knob('source_min_1').value()\\\[2\\])/(nuke.thisParent().knob('target_min_1').value()\\\[2\\]-nuke.thisParent().knob('target_max_1').value()\\\[2\\])]"} {curve}}
+  black_clamp false
+  enable_mix_luminance false
+  name grade_keep_same_3
+  xpos 1292
+  ypos -240
+ }
+ Dot {
+  name Dot11
+  xpos 1326
+  ypos -80
+ }
+push $N7b72bdc0
+ Grade {
+  blackpoint {{"\[python nuke.thisParent().knob('target_min_1').value()\\\[0\\]]"} {"\[python nuke.thisParent().knob('target_min_1').value()\\\[1\\]]"} {"\[python nuke.thisParent().knob('target_min_1').value()\\\[2\\]]"} {curve}}
+  whitepoint {{"\[python nuke.thisParent().knob('target_max_1').value()\\\[0\\]]"} {"\[python nuke.thisParent().knob('target_max_1').value()\\\[1\\]]"} {"\[python nuke.thisParent().knob('target_max_1').value()\\\[2\\]]"} {curve}}
+  black_clamp false
+  name Grade_standardize_B_3
+  xpos 1082
+  ypos -240
+ }
+ Grade {
+  gamma {{"\[python -execlocal import\\ math\\nret\\ =\\ \\ 1/math.log((nuke.thisParent().knob('source_crest_1').value()\\\[0\\]\\ -nuke.thisParent().knob('source_min_1').value()\\\[0\\])/(nuke.thisParent().knob('source_max_1').value()\\\[0\\]-nuke.thisParent().knob('source_min_1').value()\\\[0\\]),(nuke.thisParent().knob('target_crest_1').value()\\\[0\\]-nuke.toNode('Grade_standardize_B_3').knob('blackpoint').value()\\\[0\\])/(nuke.toNode('Grade_standardize_B_3').knob('whitepoint').value()\\\[0\\]-nuke.toNode('Grade_standardize_B_3').knob('blackpoint').value()\\\[0\\]))]"} {"\[python -execlocal import\\ math\\nret\\ =\\ \\ 1/math.log((nuke.thisParent().knob('source_crest_1').value()\\\[1\\]\\ -nuke.thisParent().knob('source_min_1').value()\\\[1\\])/(nuke.thisParent().knob('source_max_1').value()\\\[1\\]-nuke.thisParent().knob('source_min_1').value()\\\[1\\]),(nuke.thisParent().knob('target_crest_1').value()\\\[1\\]-nuke.toNode('Grade_standardize_B_3').knob('blackpoint').value()\\\[1\\])/(nuke.toNode('Grade_standardize_B_3').knob('whitepoint').value()\\\[1\\]-nuke.toNode('Grade_standardize_B_3').knob('blackpoint').value()\\\[1\\]))]"} {"\[python -execlocal import\\ math\\nret\\ =\\ \\ 1/math.log((nuke.thisParent().knob('source_crest_1').value()\\\[2\\]\\ -nuke.thisParent().knob('source_min_1').value()\\\[2\\])/(nuke.thisParent().knob('source_max_1').value()\\\[2\\]-nuke.thisParent().knob('source_min_1').value()\\\[2\\]),(nuke.thisParent().knob('target_crest_1').value()\\\[2\\]-nuke.toNode('Grade_standardize_B_3').knob('blackpoint').value()\\\[2\\])/(nuke.toNode('Grade_standardize_B_3').knob('whitepoint').value()\\\[2\\]-nuke.toNode('Grade_standardize_B_3').knob('blackpoint').value()\\\[2\\]))]"} {curve}}
+  black_clamp false
+  name Grade_gamma_crest_9
+  xpos 1082
+  ypos -216
+ }
+ Grade {
+  blackpoint {{"\[python nuke.thisParent().knob('source_min_1').value()\\\[0\\]]"} {"\[python nuke.thisParent().knob('source_min_1').value()\\\[1\\]]"} {"\[python nuke.thisParent().knob('source_min_1').value()\\\[2\\]]"} {curve}}
+  whitepoint {{"\[python nuke.thisParent().knob('source_max_1').value()\\\[0\\]]"} {"\[python nuke.thisParent().knob('source_max_1').value()\\\[1\\]]"} {"\[python nuke.thisParent().knob('source_max_1').value()\\\[2\\]]"} {curve}}
+  reverse true
+  black_clamp false
+  name Grade_standardize_A_1
+  xpos 1082
+  ypos -192
+ }
+ Dot {
+  name Dot13
+  xpos 1116
+  ypos -82
+ }
+push $N7b72ba50
+ Grade {
+  blackpoint {{"\[python 0.3*nuke.thisParent().knob('target_min_1').value()\\\[0\\]+0.59*nuke.thisParent().knob('target_min_1').value()\\\[1\\]+0.11*nuke.thisParent().knob('target_min_1').value()\\\[2\\]]"} {"\[python 0.3*nuke.thisParent().knob('target_min_1').value()\\\[0\\]+0.59*nuke.thisParent().knob('target_min_1').value()\\\[1\\]+0.11*nuke.thisParent().knob('target_min_1').value()\\\[2\\]]"} {"\[python 0.3*nuke.thisParent().knob('target_min_1').value()\\\[0\\]+0.59*nuke.thisParent().knob('target_min_1').value()\\\[1\\]+0.11*nuke.thisParent().knob('target_min_1').value()\\\[2\\]]"} {curve}}
+  whitepoint {{"\[python nuke.thisParent().knob('target_max_1').value()\\\[0\\]]"} {"\[python nuke.thisParent().knob('target_max_1').value()\\\[1\\]]"} {"\[python nuke.thisParent().knob('target_max_1').value()\\\[2\\]]"} {curve}}
+  black_clamp false
+  name Grade_standardize_B_1
+  xpos 943
+  ypos -240
+ }
+ Grade {
+  gamma {{"\[python -execlocal import\\ math\\nret\\ =\\ \\ 1/math.log((nuke.thisParent().knob('source_expectation').value()\\\[0\\]\\ -nuke.thisParent().knob('source_min_1').value()\\\[0\\])/(nuke.thisParent().knob('source_max_1').value()\\\[0\\]-nuke.thisParent().knob('source_min_1').value()\\\[0\\]),(nuke.thisParent().knob('target_expectation').value()\\\[0\\]-nuke.thisParent().knob('target_min_1').value()\\\[0\\])/(nuke.thisParent().knob('target_max_1').value()\\\[0\\]-nuke.thisParent().knob('target_min_1').value()\\\[0\\]))]"} {"\[python -execlocal import\\ math\\nret\\ =\\ \\ 1/math.log((nuke.thisParent().knob('source_expectation').value()\\\[1\\]\\ -nuke.thisParent().knob('source_min_1').value()\\\[1\\])/(nuke.thisParent().knob('source_max_1').value()\\\[1\\]-nuke.thisParent().knob('source_min_1').value()\\\[1\\]),(nuke.thisParent().knob('target_expectation').value()\\\[1\\]-nuke.thisParent().knob('target_min_1').value()\\\[1\\])/(nuke.thisParent().knob('target_max_1').value()\\\[1\\]-nuke.thisParent().knob('target_min_1').value()\\\[1\\]))]"} {"\[python -execlocal import\\ math\\nret\\ =\\ \\ 1/math.log((nuke.thisParent().knob('source_expectation').value()\\\[2\\]\\ -nuke.thisParent().knob('source_min_1').value()\\\[2\\])/(nuke.thisParent().knob('source_max_1').value()\\\[2\\]-nuke.thisParent().knob('source_min_1').value()\\\[2\\]),(nuke.thisParent().knob('target_expectation').value()\\\[2\\]-nuke.thisParent().knob('target_min_1').value()\\\[2\\])/(nuke.thisParent().knob('target_max_1').value()\\\[2\\]-nuke.thisParent().knob('target_min_1').value()\\\[2\\]))]"} {curve}}
+  black_clamp false
+  name Grade_gamma_crest_6
+  xpos 943
+  ypos -216
+ }
+ Grade {
+  blackpoint {{"\[python nuke.thisParent().knob('source_min_1').value()\\\[0\\]]"} {"\[python nuke.thisParent().knob('source_min_1').value()\\\[1\\]]"} {"\[python nuke.thisParent().knob('source_min_1').value()\\\[2\\]]"} {curve}}
+  whitepoint {{"\[python nuke.thisParent().knob('source_max_1').value()\\\[0\\]]"} {"\[python nuke.thisParent().knob('source_max_1').value()\\\[1\\]]"} {"\[python nuke.thisParent().knob('source_max_1').value()\\\[2\\]]"} {curve}}
+  reverse true
+  black_clamp false
+  name Grade_standardize_A1
+  xpos 943
+  ypos -192
+ }
+ Dot {
+  name Dot9
+  xpos 977
+  ypos -82
+ }
+push $N7b72b6e0
+ Grade {
+  blackpoint {{"\[python nuke.thisParent().knob('target_min_1').value()\\\[0\\]]"} {"\[python nuke.thisParent().knob('target_min_1').value()\\\[1\\]]"} {"\[python nuke.thisParent().knob('target_min_1').value()\\\[2\\]]"} {curve}}
+  whitepoint {{"\[python 0.3*nuke.thisParent().knob('target_max_1').value()\\\[0\\]+0.59*nuke.thisParent().knob('target_max_1').value()\\\[1\\]+0.11*nuke.thisParent().knob('target_max_1').value()\\\[2\\]]"} {"\[python 0.3*nuke.thisParent().knob('target_max_1').value()\\\[0\\]+0.59*nuke.thisParent().knob('target_max_1').value()\\\[1\\]+0.11*nuke.thisParent().knob('target_max_1').value()\\\[2\\]]"} {"\[python 0.3*nuke.thisParent().knob('target_max_1').value()\\\[0\\]+0.59*nuke.thisParent().knob('target_max_1').value()\\\[1\\]+0.11*nuke.thisParent().knob('target_max_1').value()\\\[2\\]]"} {curve}}
+  black_clamp false
+  name Grade_standardize_B_2
+  xpos 812
+  ypos -240
+ }
+ Grade {
+  gamma {{"\[python -execlocal import\\ math\\nret\\ =\\ \\ 1/math.log((nuke.thisParent().knob('source_expectation').value()\\\[0\\]\\ -nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[0\\])/(nuke.toNode('Grade_standardize_A').knob('whitepoint').value()\\\[0\\]-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[0\\]),(nuke.thisParent().knob('target_expectation').value()\\\[0\\]-nuke.toNode('Grade_standardize_B_2').knob('blackpoint').value()\\\[0\\])/(nuke.toNode('Grade_standardize_B_2').knob('whitepoint').value()\\\[0\\]-nuke.toNode('Grade_standardize_B_2').knob('blackpoint').value()\\\[0\\]))]"} {"\[python -execlocal import\\ math\\nret\\ =\\ \\ 1/math.log((nuke.thisParent().knob('source_expectation').value()\\\[1\\]\\ -nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[0\\])/(nuke.toNode('Grade_standardize_A').knob('whitepoint').value()\\\[0\\]-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[0\\]),(nuke.thisParent().knob('target_expectation').value()\\\[1\\]-nuke.toNode('Grade_standardize_B_2').knob('blackpoint').value()\\\[0\\])/(nuke.toNode('Grade_standardize_B_2').knob('whitepoint').value()\\\[0\\]-nuke.toNode('Grade_standardize_B_2').knob('blackpoint').value()\\\[0\\]))]"} {"\[python -execlocal import\\ math\\nret\\ =\\ \\ 1/math.log((nuke.thisParent().knob('source_expectation').value()\\\[2\\]\\ -nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[0\\])/(nuke.toNode('Grade_standardize_A').knob('whitepoint').value()\\\[0\\]-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[0\\]),(nuke.thisParent().knob('target_expectation').value()\\\[2\\]-nuke.toNode('Grade_standardize_B_2').knob('blackpoint').value()\\\[0\\])/(nuke.toNode('Grade_standardize_B_2').knob('whitepoint').value()\\\[0\\]-nuke.toNode('Grade_standardize_B_2').knob('blackpoint').value()\\\[0\\]))]"} {curve}}
+  black_clamp false
+  name Grade_gamma_expectation
+  xpos 812
+  ypos -216
+ }
+ Grade {
+  blackpoint {{"\[python nuke.thisParent().knob('source_min_1').value()\\\[0\\]]"} {"\[python nuke.thisParent().knob('source_min_1').value()\\\[1\\]]"} {"\[python nuke.thisParent().knob('source_min_1').value()\\\[2\\]]"} {curve}}
+  whitepoint {{"\[python 0.3*nuke.thisParent().knob('source_max_1').value()\\\[0\\]+0.59*nuke.thisParent().knob('source_max_1').value()\\\[1\\]+0.11*nuke.thisParent().knob('source_max_1').value()\\\[2\\]]"} {"\[python 0.3*nuke.thisParent().knob('source_max_1').value()\\\[0\\]+0.59*nuke.thisParent().knob('source_max_1').value()\\\[1\\]+0.11*nuke.thisParent().knob('source_max_1').value()\\\[2\\]]"} {"\[python 0.3*nuke.thisParent().knob('source_max_1').value()\\\[0\\]+0.59*nuke.thisParent().knob('source_max_1').value()\\\[1\\]+0.11*nuke.thisParent().knob('source_max_1').value()\\\[2\\]]"} {curve}}
+  reverse true
+  black_clamp false
+  name Grade_standardize_A2
+  xpos 812
+  ypos -192
+ }
+ Dot {
+  name Dot6
+  xpos 846
+  ypos -82
+ }
+push $N7b72b370
+ Grade {
+  black {{"\[python (nuke.thisParent().knob('target_min_1').value()\\\[0\\]*nuke.thisParent().knob('source_max_1').value()\\\[0\\]-nuke.thisParent().knob('source_min_1').value()\\\[0\\]*nuke.thisParent().knob('target_max_1').value()\\\[0\\])/(nuke.thisParent().knob('target_min_1').value()\\\[0\\]-nuke.thisParent().knob('target_max_1').value()\\\[0\\])]"} {"\[python (nuke.thisParent().knob('target_min_1').value()\\\[1\\]*nuke.thisParent().knob('source_max_1').value()\\\[1\\]-nuke.thisParent().knob('source_min_1').value()\\\[1\\]*nuke.thisParent().knob('target_max_1').value()\\\[1\\])/(nuke.thisParent().knob('target_min_1').value()\\\[1\\]-nuke.thisParent().knob('target_max_1').value()\\\[1\\])]"} {"\[python (nuke.thisParent().knob('target_min_1').value()\\\[2\\]*nuke.thisParent().knob('source_max_1').value()\\\[2\\]-nuke.thisParent().knob('source_min_1').value()\\\[2\\]*nuke.thisParent().knob('target_max_1').value()\\\[2\\])/(nuke.thisParent().knob('target_min_1').value()\\\[2\\]-nuke.thisParent().knob('target_max_1').value()\\\[2\\])]"} {curve}}
+  white {{"\[python (nuke.thisParent().knob('source_min_1').value()\\\[0\\]-nuke.thisParent().knob('source_max_1').value()\\\[0\\]+nuke.thisParent().knob('target_min_1').value()\\\[0\\]*nuke.thisParent().knob('source_max_1').value()\\\[0\\]-nuke.thisParent().knob('target_max_1').value()\\\[0\\]*nuke.thisParent().knob('source_min_1').value()\\\[0\\])/(nuke.thisParent().knob('target_min_1').value()\\\[0\\]-nuke.thisParent().knob('target_max_1').value()\\\[0\\])]"} {"\[python (nuke.thisParent().knob('source_min_1').value()\\\[1\\]-nuke.thisParent().knob('source_max_1').value()\\\[1\\]+nuke.thisParent().knob('target_min_1').value()\\\[1\\]*nuke.thisParent().knob('source_max_1').value()\\\[1\\]-nuke.thisParent().knob('target_max_1').value()\\\[1\\]*nuke.thisParent().knob('source_min_1').value()\\\[1\\])/(nuke.thisParent().knob('target_min_1').value()\\\[1\\]-nuke.thisParent().knob('target_max_1').value()\\\[1\\])]"} {"\[python (nuke.thisParent().knob('source_min_1').value()\\\[2\\]-nuke.thisParent().knob('source_max_1').value()\\\[2\\]+nuke.thisParent().knob('target_min_1').value()\\\[2\\]*nuke.thisParent().knob('source_max_1').value()\\\[2\\]-nuke.thisParent().knob('target_max_1').value()\\\[2\\]*nuke.thisParent().knob('source_min_1').value()\\\[2\\])/(nuke.thisParent().knob('target_min_1').value()\\\[2\\]-nuke.thisParent().knob('target_max_1').value()\\\[2\\])]"} {curve}}
+  black_clamp false
+  enable_mix_luminance false
+  name grade_keep_same_2
+  xpos 619
+  ypos -240
+ }
+ Grade {
+  blackpoint {{"\[python nuke.thisParent().knob('source_min_1').value()\\\[0\\]]"} {"\[python nuke.thisParent().knob('source_min_1').value()\\\[1\\]]"} {"\[python nuke.thisParent().knob('source_min_1').value()\\\[2\\]]"} {curve}}
+  whitepoint {{"\[python nuke.thisParent().knob('source_max_1').value()\\\[0\\]]"} {"\[python nuke.thisParent().knob('source_max_1').value()\\\[1\\]]"} {"\[python nuke.thisParent().knob('source_max_1').value()\\\[2\\]]"} {curve}}
+  black_clamp false
+  name Grade_standardize4
+  xpos 619
+  ypos -216
+ }
+ Grade {
+  gamma {{"\[python -execlocal import\\ math\\nret\\ =\\ 1/math.log(\\n(nuke.thisParent().knob('source_expectation').value()\\\[0\\]\\ -nuke.toNode('Grade_standardize4').knob('blackpoint').value()\\\[0\\])/(nuke.toNode('Grade_standardize4').knob('whitepoint').value()\\\[0\\]-nuke.toNode('Grade_standardize4').knob('blackpoint').value()\\\[0\\])\\n,\\n(nuke.thisParent().knob('target_expectation').value()\\\[0\\]*(nuke.toNode('grade_keep_same_2').knob('white').value()\\\[0\\]-nuke.toNode('grade_keep_same_2').knob('black').value()\\\[0\\])+nuke.toNode('grade_keep_same_2').knob('black').value()\\\[0\\]-nuke.toNode('Grade_standardize4').knob('blackpoint').value()\\\[0\\])/(nuke.toNode('Grade_standardize4').knob('whitepoint').value()\\\[0\\]-nuke.toNode('Grade_standardize4').knob('blackpoint').value()\\\[0\\]))]"} {"\[python -execlocal import\\ math\\nret\\ =\\ 1/math.log(\\n(nuke.thisParent().knob('source_expectation').value()\\\[1\\]\\ -nuke.toNode('Grade_standardize4').knob('blackpoint').value()\\\[1\\])/(nuke.toNode('Grade_standardize4').knob('whitepoint').value()\\\[1\\]-nuke.toNode('Grade_standardize4').knob('blackpoint').value()\\\[1\\])\\n,\\n(nuke.thisParent().knob('target_expectation').value()\\\[1\\]*(nuke.toNode('grade_keep_same_2').knob('white').value()\\\[1\\]-nuke.toNode('grade_keep_same_2').knob('black').value()\\\[1\\])+nuke.toNode('grade_keep_same_2').knob('black').value()\\\[1\\]-nuke.toNode('Grade_standardize4').knob('blackpoint').value()\\\[1\\])/(nuke.toNode('Grade_standardize4').knob('whitepoint').value()\\\[1\\]-nuke.toNode('Grade_standardize4').knob('blackpoint').value()\\\[1\\]))]"} {"\[python -execlocal import\\ math\\nret\\ =\\ 1/math.log((nuke.thisParent().knob('source_expectation').value()\\\[2\\]\\ -nuke.toNode('Grade_standardize4').knob('blackpoint').value()\\\[2\\])/(nuke.toNode('Grade_standardize4').knob('whitepoint').value()\\\[2\\]-nuke.toNode('Grade_standardize4').knob('blackpoint').value()\\\[2\\])\\n,\\n(nuke.thisParent().knob('target_expectation').value()\\\[2\\]*(nuke.toNode('grade_keep_same_2').knob('white').value()\\\[2\\]-nuke.toNode('grade_keep_same_2').knob('black').value()\\\[2\\])+nuke.toNode('grade_keep_same_2').knob('black').value()\\\[2\\]-nuke.toNode('Grade_standardize4').knob('blackpoint').value()\\\[2\\])/(nuke.toNode('Grade_standardize4').knob('whitepoint').value()\\\[2\\]-nuke.toNode('Grade_standardize4').knob('blackpoint').value()\\\[2\\]))\\n]"} {curve}}
+  black_clamp false
+  name Grade_gamma_crest_4
+  xpos 619
+  ypos -192
+ }
+ Grade {
+  blackpoint {{"\[python nuke.thisParent().knob('source_min_1').value()\\\[0\\]]"} {"\[python nuke.thisParent().knob('source_min_1').value()\\\[1\\]]"} {"\[python nuke.thisParent().knob('source_min_1').value()\\\[2\\]]"} {curve}}
+  whitepoint {{"\[python nuke.thisParent().knob('source_max_1').value()\\\[0\\]]"} {"\[python nuke.thisParent().knob('source_max_1').value()\\\[1\\]]"} {"\[python nuke.thisParent().knob('source_max_1').value()\\\[2\\]]"} {curve}}
+  reverse true
+  black_clamp false
+  name Grade_standardize_turnback_3
+  xpos 619
+  ypos -110
+ }
+ Dot {
+  name Dot14
+  xpos 653
+  ypos -86
+ }
+push $N7b72b000
+ Grade {
+  black {{"\[python (nuke.thisParent().knob('target_min').value()\\\[0\\]*nuke.thisParent().knob('source_max').value()\\\[0\\]-nuke.thisParent().knob('source_min').value()\\\[0\\]*nuke.thisParent().knob('target_max').value()\\\[0\\])/(nuke.thisParent().knob('target_min').value()\\\[0\\]-nuke.thisParent().knob('target_max').value()\\\[0\\])]"} {"\[python (nuke.thisParent().knob('target_min').value()\\\[1\\]*nuke.thisParent().knob('source_max').value()\\\[1\\]-nuke.thisParent().knob('source_min').value()\\\[1\\]*nuke.thisParent().knob('target_max').value()\\\[1\\])/(nuke.thisParent().knob('target_min').value()\\\[1\\]-nuke.thisParent().knob('target_max').value()\\\[1\\])]"} {"\[python (nuke.thisParent().knob('target_min').value()\\\[2\\]*nuke.thisParent().knob('source_max').value()\\\[2\\]-nuke.thisParent().knob('source_min').value()\\\[2\\]*nuke.thisParent().knob('target_max').value()\\\[2\\])/(nuke.thisParent().knob('target_min').value()\\\[2\\]-nuke.thisParent().knob('target_max').value()\\\[2\\])]"} 1}
+  white {{"\[python (nuke.thisParent().knob('source_min').value()\\\[0\\]-nuke.thisParent().knob('source_max').value()\\\[0\\]+nuke.thisParent().knob('target_min').value()\\\[0\\]*nuke.thisParent().knob('source_max').value()\\\[0\\]-nuke.thisParent().knob('target_max').value()\\\[0\\]*nuke.thisParent().knob('source_min').value()\\\[0\\])/(nuke.thisParent().knob('target_min').value()\\\[0\\]-nuke.thisParent().knob('target_max').value()\\\[0\\])]"} {"\[python (nuke.thisParent().knob('source_min').value()\\\[1\\]-nuke.thisParent().knob('source_max').value()\\\[1\\]+nuke.thisParent().knob('target_min').value()\\\[1\\]*nuke.thisParent().knob('source_max').value()\\\[1\\]-nuke.thisParent().knob('target_max').value()\\\[1\\]*nuke.thisParent().knob('source_min').value()\\\[1\\])/(nuke.thisParent().knob('target_min').value()\\\[1\\]-nuke.thisParent().knob('target_max').value()\\\[1\\])]"} {"\[python (nuke.thisParent().knob('source_min').value()\\\[2\\]-nuke.thisParent().knob('source_max').value()\\\[2\\]+nuke.thisParent().knob('target_min').value()\\\[2\\]*nuke.thisParent().knob('source_max').value()\\\[2\\]-nuke.thisParent().knob('target_max').value()\\\[2\\]*nuke.thisParent().knob('source_min').value()\\\[2\\])/(nuke.thisParent().knob('target_min').value()\\\[2\\]-nuke.thisParent().knob('target_max').value()\\\[2\\])]"} 1}
+  black_clamp false
+  enable_mix_luminance false
+  name grade_keep_same_1
+  xpos 360
+  ypos -240
+ }
+ Grade {
+  blackpoint {{"\[python min(\\\[nuke.thisParent().knob('source_min').value()\\\[0\\],nuke.thisParent().knob('source_min').value()\\\[1\\],nuke.thisParent().knob('source_min').value()\\\[2\\]\\])]"} {"\[python min(\\\[nuke.thisParent().knob('source_min').value()\\\[0\\],nuke.thisParent().knob('source_min').value()\\\[1\\],nuke.thisParent().knob('source_min').value()\\\[2\\]\\])]"} {"\[python min(\\\[nuke.thisParent().knob('source_min').value()\\\[0\\],nuke.thisParent().knob('source_min').value()\\\[1\\],nuke.thisParent().knob('source_min').value()\\\[2\\]\\])]"} {curve}}
+  whitepoint {{"\[python max(\\\[nuke.thisParent().knob('source_max').value()\\\[0\\],nuke.thisParent().knob('source_max').value()\\\[1\\],nuke.thisParent().knob('source_max').value()\\\[2\\]\\])]"} {"\[python max(\\\[nuke.thisParent().knob('source_max').value()\\\[0\\],nuke.thisParent().knob('source_max').value()\\\[1\\],nuke.thisParent().knob('source_max').value()\\\[2\\]\\])]"} {"\[python max(\\\[nuke.thisParent().knob('source_max').value()\\\[0\\],nuke.thisParent().knob('source_max').value()\\\[1\\],nuke.thisParent().knob('source_max').value()\\\[2\\]\\])]"} {curve}}
+  black_clamp false
+  name Grade_standardize
+  xpos 360
+  ypos -216
+ }
+set N78f1aa20 [stack 0]
+ Grade {
+  gamma {{"\[python -execlocal import\\ math\\nret\\ =\\ 1/math.log((nuke.thisParent().knob('source_crest_1').value()\\\[0\\]-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[0\\])/(nuke.toNode('Grade_standardize_A').knob('whitepoint').value()\\\[0\\]-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[0\\])\\n\\n,(\\nnuke.thisParent().knob('target_crest_1').value()\\\[0\\]*(nuke.toNode('grade_keep_same_1').knob('white').value()\\\[0\\]-nuke.toNode('grade_keep_same_1').knob('black').value()\\\[0\\])+nuke.toNode('grade_keep_same_1').knob('black').value()\\\[0\\]\\n\\n-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[0\\])/(nuke.toNode('Grade_standardize_A').knob('whitepoint').value()\\\[0\\]-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[0\\]))]"} {"\[python -execlocal import\\ math\\nret\\ =\\ 1/math.log((nuke.thisParent().knob('source_crest_1').value()\\\[1\\]-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[1\\])/(nuke.toNode('Grade_standardize_A').knob('whitepoint').value()\\\[1\\]-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[1\\])\\n\\n,(\\nnuke.thisParent().knob('target_crest_1').value()\\\[1\\]*(nuke.toNode('grade_keep_same_1').knob('white').value()\\\[1\\]-nuke.toNode('grade_keep_same_1').knob('black').value()\\\[1\\])+nuke.toNode('grade_keep_same_1').knob('black').value()\\\[1\\]\\n\\n-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[1\\])/(nuke.toNode('Grade_standardize_A').knob('whitepoint').value()\\\[1\\]-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[2\\]))]"} {"\[python -execlocal import\\ math\\nret\\ =\\ 1/math.log((nuke.thisParent().knob('source_crest_1').value()\\\[2\\]-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[2\\])/(nuke.toNode('Grade_standardize_A').knob('whitepoint').value()\\\[2\\]-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[2\\])\\n\\n,(\\nnuke.thisParent().knob('target_crest_1').value()\\\[2\\]*(nuke.toNode('grade_keep_same_1').knob('white').value()\\\[2\\]-nuke.toNode('grade_keep_same_1').knob('black').value()\\\[2\\])+nuke.toNode('grade_keep_same_1').knob('black').value()\\\[2\\]\\n\\n-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[2\\])/(nuke.toNode('Grade_standardize_A').knob('whitepoint').value()\\\[2\\]-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[2\\]))\\n]"} 1}
+  black_clamp false
+  name Grade_gamma_crest_1
+  xpos 360
+  ypos -156
+ }
+ Grade {
+  blackpoint {{"\[python min(\\\[nuke.thisParent().knob('source_min').value()\\\[0\\],nuke.thisParent().knob('source_min').value()\\\[1\\],nuke.thisParent().knob('source_min').value()\\\[2\\]\\])]"} {"\[python min(\\\[nuke.thisParent().knob('source_min').value()\\\[0\\],nuke.thisParent().knob('source_min').value()\\\[1\\],nuke.thisParent().knob('source_min').value()\\\[2\\]\\])]"} {"\[python min(\\\[nuke.thisParent().knob('source_min').value()\\\[0\\],nuke.thisParent().knob('source_min').value()\\\[1\\],nuke.thisParent().knob('source_min').value()\\\[2\\]\\])]"} {curve}}
+  whitepoint {{"\[python max(\\\[nuke.thisParent().knob('source_max').value()\\\[0\\],nuke.thisParent().knob('source_max').value()\\\[1\\],nuke.thisParent().knob('source_max').value()\\\[2\\]\\])]"} {"\[python max(\\\[nuke.thisParent().knob('source_max').value()\\\[0\\],nuke.thisParent().knob('source_max').value()\\\[1\\],nuke.thisParent().knob('source_max').value()\\\[2\\]\\])]"} {"\[python max(\\\[nuke.thisParent().knob('source_max').value()\\\[0\\],nuke.thisParent().knob('source_max').value()\\\[1\\],nuke.thisParent().knob('source_max').value()\\\[2\\]\\])]"} {curve}}
+  reverse true
+  black_clamp false
+  name Grade_standardize_turnback_1
+  xpos 360
+  ypos -132
+ }
+push $N78f1aa20
+ Grade {
+  gamma {{"\[python -execlocal import\\ math\\nret\\ =\\ 1/math.log((nuke.thisParent().knob('source_expectation').value()\\\[0\\]-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[0\\])/(nuke.toNode('Grade_standardize_A').knob('whitepoint').value()\\\[0\\]-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[0\\])\\n\\n,(\\nnuke.thisParent().knob('target_expectation').value()\\\[0\\]*(nuke.toNode('grade_keep_same_1').knob('white').value()\\\[0\\]-nuke.toNode('grade_keep_same_1').knob('black').value()\\\[0\\])+nuke.toNode('grade_keep_same_1').knob('black').value()\\\[0\\]\\n\\n-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[0\\])/(nuke.toNode('Grade_standardize_A').knob('whitepoint').value()\\\[0\\]-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[0\\]))]"} {"\[python -execlocal import\\ math\\nret\\ =\\ 1/math.log((nuke.thisParent().knob('source_expectation').value()\\\[1\\]-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[1\\])/(nuke.toNode('Grade_standardize_A').knob('whitepoint').value()\\\[1\\]-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[1\\])\\n\\n,(\\nnuke.thisParent().knob('target_expectation').value()\\\[1\\]*(nuke.toNode('grade_keep_same_1').knob('white').value()\\\[1\\]-nuke.toNode('grade_keep_same_1').knob('black').value()\\\[1\\])+nuke.toNode('grade_keep_same_1').knob('black').value()\\\[1\\]\\n\\n-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[1\\])/(nuke.toNode('Grade_standardize_A').knob('whitepoint').value()\\\[1\\]-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[2\\]))]"} {"\[python -execlocal import\\ math\\nret\\ =\\ 1/math.log((nuke.thisParent().knob('source_expectation').value()\\\[2\\]-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[2\\])/(nuke.toNode('Grade_standardize_A').knob('whitepoint').value()\\\[2\\]-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[2\\])\\n\\n,(\\nnuke.thisParent().knob('target_expectation').value()\\\[2\\]*(nuke.toNode('grade_keep_same_1').knob('white').value()\\\[2\\]-nuke.toNode('grade_keep_same_1').knob('black').value()\\\[2\\])+nuke.toNode('grade_keep_same_1').knob('black').value()\\\[2\\]\\n\\n-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[2\\])/(nuke.toNode('Grade_standardize_A').knob('whitepoint').value()\\\[2\\]-nuke.toNode('Grade_standardize_A').knob('blackpoint').value()\\\[2\\]))\\n\\n#将期望值的亮度差换算成source2波峰与target1波峰的亮度差#\\n]"} {curve}}
+  black_clamp false
+  name Grade_gamma_crest_7
+  xpos 250
+  ypos -156
+ }
+ Grade {
+  blackpoint {{"\[python min(\\\[nuke.thisParent().knob('source_min').value()\\\[0\\],nuke.thisParent().knob('source_min').value()\\\[1\\],nuke.thisParent().knob('source_min').value()\\\[2\\]\\])]"} {"\[python min(\\\[nuke.thisParent().knob('source_min').value()\\\[0\\],nuke.thisParent().knob('source_min').value()\\\[1\\],nuke.thisParent().knob('source_min').value()\\\[2\\]\\])]"} {"\[python min(\\\[nuke.thisParent().knob('source_min').value()\\\[0\\],nuke.thisParent().knob('source_min').value()\\\[1\\],nuke.thisParent().knob('source_min').value()\\\[2\\]\\])]"} {curve}}
+  whitepoint {{"\[python max(\\\[nuke.thisParent().knob('source_max').value()\\\[0\\],nuke.thisParent().knob('source_max').value()\\\[1\\],nuke.thisParent().knob('source_max').value()\\\[2\\]\\])]"} {"\[python max(\\\[nuke.thisParent().knob('source_max').value()\\\[0\\],nuke.thisParent().knob('source_max').value()\\\[1\\],nuke.thisParent().knob('source_max').value()\\\[2\\]\\])]"} {"\[python max(\\\[nuke.thisParent().knob('source_max').value()\\\[0\\],nuke.thisParent().knob('source_max').value()\\\[1\\],nuke.thisParent().knob('source_max').value()\\\[2\\]\\])]"} {curve}}
+  reverse true
+  black_clamp false
+  name Grade_standardize_turnback_5
+  xpos 250
+  ypos -132
+ }
+ Switch {
+  inputs 7
+  which {{"\[python nuke.thisParent().knob('switchbutton').value()]"}}
+  name Switch4
+  xpos 360
+  ypos 138
+ }
+set N487b9d70 [stack 0]
+ Dot {
+  name Dot4
+  xpos 198
+  ypos 141
+ }
+set N47fc6c70 [stack 0]
+ Merge2 {
+  inputs 2
+  operation matte
+  name Merge11
+  xpos -80
+  ypos 138
+ }
+push $N47fc6c70
+ Dot {
+  name Dot2
+  xpos 198
+  ypos 178
+ }
+ Switch {
+  inputs 2
+  name Switch2
+  xpos -80
+  ypos 175
+ }
+ Dot {
+  name Dot3
+  xpos -46
+  ypos 208
+ }
+push $N487b9d70
+ Switch {
+  inputs 2
+  name Switch1
+  xpos 360
+  ypos 205
+ }
+set N487b99c0 [stack 0]
+ Colorspace {
+  colorspace_in Cineon
+  maskChannelInput -rgba.alpha
+  name Colorspace3
+  xpos 360
+  ypos 293
+  disable {{"\[python 1-nuke.thisParent().knob('linear_mode').value()]" x1203 1}}
+ }
+ Output {
+  name Output1
+  xpos 360
+  ypos 317
+ }
+push $N487b99c0
+push $N7b72ac90
+push $N48176060
+ Viewer {
+  inputs 4
+  input_number 2
+  colour_sample_bbox {0.5350390673 0.05694532394 0.9549609423 0.4690546989}
+  samplepoints {{-1.152413249 0.09229466319}
+    }
+  input_process false
+  name Viewer1
+  xpos 73
+  ypos 567
+ }
+end_group
